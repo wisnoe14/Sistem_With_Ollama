@@ -1,0 +1,25 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Start FastAPI Server",
+			"type": "shell",
+			"command": "${workspaceFolder}/backend/venv/Scripts/python.exe",
+			"args": [
+				"main.py"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}/backend/app"
+			},
+			"group": "build",
+			"isBackground": true,
+			"problemMatcher": [],
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "new"
+			}
+		}
+	]
+}

@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+sqlalchemy
+python-jose
+python-dotenv
+pandas
+openai
+pydantic
+mysql-connector-python
+email-validator
+typing-extensions
