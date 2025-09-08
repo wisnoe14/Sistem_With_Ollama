@@ -386,11 +386,14 @@ const CSSimulation = () => {
         }
     };
 
+
     const handleAnswer = async (answer: string) => {
         setLoading(true);
-        // Step-by-step: always use currentQuestion.q for Q
         let newConversation;
         let status = "";
+        const customer_id = sessionStorage.getItem('customer_id') || "";
+        const token = sessionStorage.getItem('token');
+
         if (isStatusStep) {
             setIsStatusStep(false);
             let statusQ = answer.trim();
@@ -400,12 +403,84 @@ const CSSimulation = () => {
                 if (statusQ.toLowerCase().includes("bisa")) statusQ = "Bisa Dihubungi";
                 else if (statusQ.toLowerCase().includes("tidak")) statusQ = "Tidak Dapat Dihubungi";
             }
-            // Only add status Q once
-            newConversation = [{ q: currentQuestion?.q || "Status dihubungi?", a: statusQ }];
+            newConversation = [...conversation, { q: currentQuestion?.q || "Status dihubungi?", a: statusQ }];
             setConversation(newConversation);
             status = statusQ;
+
+            // Jika status Bisa Dihubungi, simpan ke backend, lalu generate pertanyaan berikutnya
+            if (statusQ === "Bisa Dihubungi") {
+                try {
+                    // 1. Simpan percakapan ke backend (hanya simpan, tidak prediksi)
+                    const saveRes = await fetch(`${API_BASE_URL}/conversation/next-question`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({ customer_id, topic, conversation: newConversation }),
+                    });
+                    if (!saveRes.ok) throw new Error('Gagal menyimpan percakapan');
+                    const saveData = await saveRes.json();
+                    if (!saveData.success) throw new Error(saveData.error || 'Gagal menyimpan percakapan');
+
+                    // 2. Generate pertanyaan berikutnya
+                    const response = await fetch(`${API_BASE_URL}/conversation/generate-simulation-questions`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({ customer_id, topic, conversation: newConversation, status }),
+                    });
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    const data = await response.json();
+                    if (data.is_last) {
+                        // Prediction hanya jika is_last
+                        const prediction = data.prediction;
+                        setResult(prediction);
+                        const historyItem: HistoryItem = {
+                            date: new Date().toLocaleString('id-ID'),
+                            topic: topic,
+                            result: prediction
+                        };
+                        setSimulationHistory(prev => [historyItem, ...prev]);
+                        setCurrentQuestion(null);
+                    } else if (data.question) {
+                        setCurrentQuestion({ q: data.question, options: data.options || [] });
+                    } else {
+                        setCurrentQuestion(null);
+                    }
+                } catch (error) {
+                    console.error("Gagal menyimpan percakapan atau mendapatkan pertanyaan berikutnya:", error);
+                    alert("Gagal menyimpan percakapan atau mendapatkan pertanyaan berikutnya dari server.");
+                } finally {
+                    setLoading(false);
+                }
+                return;
+            } else {
+                // Jika status bukan 'Bisa Dihubungi', hanya simpan
+                try {
+                    const saveRes = await fetch(`${API_BASE_URL}/conversation/next-question`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({ customer_id, topic, conversation: newConversation }),
+                    });
+                    if (!saveRes.ok) throw new Error('Gagal menyimpan percakapan');
+                    const saveData = await saveRes.json();
+                    if (!saveData.success) throw new Error(saveData.error || 'Gagal menyimpan percakapan');
+                } catch (error) {
+                    console.error("Gagal menyimpan percakapan:", error);
+                    alert("Gagal menyimpan percakapan ke server.");
+                } finally {
+                    setLoading(false);
+                }
+                return;
+            }
         } else {
-            // Only add if Q is not empty, not duplicate status, and not duplicate last Q/A
+            // Jawaban untuk pertanyaan selain status
             if (
                 currentQuestion?.q &&
                 currentQuestion.q !== "Status dihubungi?" &&
@@ -417,40 +492,54 @@ const CSSimulation = () => {
                 newConversation = [...conversation];
             }
             status = newConversation.find(c => c.q && c.q.toLowerCase().includes('status dihubungi'))?.a || "";
-        }
-        const customer_id = sessionStorage.getItem('customer_id') || "";
-        const token = sessionStorage.getItem('token');
-        try {
-            const response = await fetch(`${API_BASE_URL}/conversation/generate-simulation-questions`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...(token ? { Authorization: `Bearer ${token}` } : {})
-                },
-                body: JSON.stringify({ customer_id, topic, conversation: newConversation, status }),
-            });
-            if (!response.ok) throw new Error('Network response was not ok');
-            const data = await response.json();
-            if (data.is_last) {
-                const prediction = data.prediction;
-                setResult(prediction);
-                const historyItem: HistoryItem = {
-                    date: new Date().toLocaleString('id-ID'),
-                    topic: topic,
-                    result: prediction
-                };
-                setSimulationHistory(prev => [historyItem, ...prev]);
-                setCurrentQuestion(null);
-            } else if (data.question) {
-                setCurrentQuestion({ q: data.question, options: data.options || [] });
-            } else {
-                setCurrentQuestion(null);
+
+            try {
+                // 1. Simpan percakapan ke backend (hanya simpan, tidak prediksi)
+                const saveRes = await fetch(`${API_BASE_URL}/conversation/next-question`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {})
+                    },
+                    body: JSON.stringify({ customer_id, topic, conversation: newConversation }),
+                });
+                if (!saveRes.ok) throw new Error('Gagal menyimpan percakapan');
+                const saveData = await saveRes.json();
+                if (!saveData.success) throw new Error(saveData.error || 'Gagal menyimpan percakapan');
+
+                // 2. Generate pertanyaan berikutnya
+                const response = await fetch(`${API_BASE_URL}/conversation/generate-simulation-questions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { Authorization: `Bearer ${token}` } : {})
+                    },
+                    body: JSON.stringify({ customer_id, topic, conversation: newConversation, status }),
+                });
+                if (!response.ok) throw new Error('Network response was not ok');
+                const data = await response.json();
+                if (data.is_last) {
+                    // Prediction hanya jika is_last
+                    const prediction = data.prediction;
+                    setResult(prediction);
+                    const historyItem: HistoryItem = {
+                        date: new Date().toLocaleString('id-ID'),
+                        topic: topic,
+                        result: prediction
+                    };
+                    setSimulationHistory(prev => [historyItem, ...prev]);
+                    setCurrentQuestion(null);
+                } else if (data.question) {
+                    setCurrentQuestion({ q: data.question, options: data.options || [] });
+                } else {
+                    setCurrentQuestion(null);
+                }
+            } catch (error) {
+                console.error("Gagal menyimpan percakapan atau mendapatkan pertanyaan berikutnya:", error);
+                alert("Gagal menyimpan percakapan atau mendapatkan pertanyaan berikutnya dari server.");
+            } finally {
+                setLoading(false);
             }
-        } catch (error) {
-            console.error("Failed to get next question or prediction:", error);
-            alert("Gagal mendapatkan pertanyaan atau prediksi dari server.");
-        } finally {
-            setLoading(false);
         }
     };
 
