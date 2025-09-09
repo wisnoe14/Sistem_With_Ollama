@@ -88,17 +88,50 @@ def get_status_dihubungi_options():
 
 # Endpoint untuk generate pertanyaan baru (tanpa menyimpan, rapi)
 
+
 @router.post("/generate-simulation-questions")
 async def generate_simulation_questions(request: Request):
     body = await request.json()
     topic = body.get("topic")
     conversation = body.get("conversation", [])
     status = body.get("status")
+
+    # Cek status dihubungi
+    status_dihubungi = None
+    if isinstance(conversation, list) and len(conversation) > 0:
+        for item in conversation:
+            if isinstance(item, dict) and item.get("q", "").lower().strip() == "status dihubungi?":
+                status_dihubungi = item.get("a", "").strip()
+                break
+
+    # Jika status Tidak Dapat Dihubungi dan belum ada alasan, tanyakan alasan
+    if status_dihubungi and status_dihubungi.lower() == "tidak dapat dihubungi":
+        # Cek apakah sudah ada pertanyaan alasan
+        alasan_asked = any(
+            isinstance(item, dict) and "alasan" in item.get("q", "").lower() for item in conversation
+        )
+        if not alasan_asked:
+            return {
+                "question": "Apa alasan pelanggan tidak dapat dihubungi?",
+                "options": [
+                    "Nomor tidak aktif",
+                    "Tidak diangkat",
+                    "Blokir/Spam",
+                    "Lainnya"
+                ]
+            }
+        else:
+            # Sudah dijawab alasan, simpan dan akhiri simulasi
+            answers = [item.get("a", "") for item in conversation if isinstance(item, dict) and item.get("a", "").strip()]
+            prediction = predict_status_promo_ollama(answers)
+            return {"is_last": True, "prediction": prediction}
+
     # Jika sudah 6 step, return prediksi, bukan pertanyaan baru
-    if isinstance(conversation, list) and len(conversation) >= 6:
+    if isinstance(conversation, list) and len(conversation) >= 8:
         answers = [item.get("a", "") for item in conversation if isinstance(item, dict) and item.get("a", "").strip()]
         prediction = predict_status_promo_ollama(answers)
         return {"is_last": True, "prediction": prediction}
+
     result = generate_question(topic, conversation)
     return result
 
