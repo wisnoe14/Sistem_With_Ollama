@@ -20,36 +20,56 @@ def cache_key(*args, **kwargs):
     return hashlib.md5(key_str.encode()).hexdigest()
 
 
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/generate")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama2")
+
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+
+# Cek dan pull model jika belum ada
+import subprocess
+import requests as reqs
+def ensure_ollama_model(model_name: str):
+    try:
+        resp = reqs.get("http://localhost:11434/api/tags")
+        if resp.status_code == 200:
+            tags = resp.json().get("models", [])
+            if not any(m.get("name", "").startswith(model_name) for m in tags):
+                print(f"[INFO] Model {model_name} belum ada, melakukan pull...")
+                subprocess.run(["ollama", "pull", model_name], check=True)
+    except Exception as e:
+        print(f"[WARNING] Tidak bisa cek/pull model Ollama: {e}")
+
+ensure_ollama_model(OLLAMA_MODEL)
+
 
 
 def predict_status_promo_ollama(answers: list) -> dict:
     """
-    Prediksi status, promo, estimasi bayar, alasan menggunakan Ollama.
+    Prediksi status, promo, estimasi bayar, alasan menggunakan Ollama (via /api/chat).
     """
     percakapan = " | ".join([str(a) for a in answers if a])
     prompt = (
-        f"Berdasarkan percakapan berikut: {percakapan}. "
-        "Prediksikan status pelanggan (pilihan: Pelanggan tidak dapat dihubungi, Closing, Pelanggan dapat dihubungi, Bersedia Membayar) "
-        "dan jenis promo yang sesuai (pilihan: Tidak Ada Promo, Promo Diskon, Promo Cashback, Promo Gratis Bulan, Promo Lainnya). "
-        "Format output: Status: <status>, Promo: <jenis_promo>, Estimasi Pembayaran: <estimasi jika ada, jika tidak tulis 'Belum tersedia'>, Alasan: <ringkas alasan dari jawaban>. Jawab maksimal 7 kata per field."
+        f"Percakapan: {percakapan}. Prediksi status (Pelanggan tidak dapat dihubungi, Closing, Pelanggan dapat dihubungi, Bersedia Membayar) dan promo (Tidak Ada Promo, Promo Diskon, Promo Cashback, Promo Gratis Bulan, Promo Lainnya). Format: Status: <status>, Promo: <jenis_promo>, Estimasi: <estimasi atau 'Belum tersedia'>, Alasan: <alasan ringkas, max 7 kata>."
     )
-    key = cache_key(prompt, "predict_status_promo_ollama")
+    key = cache_key(prompt, "predict_status_promo_ollama_chat")
     if key in _ollama_cache:
         content = _ollama_cache[key]
     else:
         payload = {
             "model": OLLAMA_MODEL,
-            "prompt": prompt,
+            "messages": [
+                {"role": "system", "content": "Kamu adalah asisten customer service yang membantu memprediksi status dan promo pelanggan."},
+                {"role": "user", "content": prompt}
+            ],
             "stream": False
         }
         try:
-            resp = requests.post(OLLAMA_URL, json=payload, timeout=60)
+            resp = requests.post(OLLAMA_URL, json=payload, timeout=120)
             resp.raise_for_status()
             data = resp.json()
-            content = data.get("response", "")
-        except Exception:
+            # /api/chat returns 'message' with 'content'
+            content = data.get("message", {}).get("content", "")
+        except Exception as e:
+            print(f"[OLLAMA ERROR][predict_status_promo_ollama] {e}")
             content = ""
         _ollama_cache[key] = content
     # Parsing output sederhana
@@ -69,9 +89,10 @@ def predict_status_promo_ollama(answers: list) -> dict:
 
 
 
+
 def generate_question(topic: str, context: Union[str, list] = "") -> dict:
     """
-    Generate pertanyaan + opsi jawaban dari context percakapan.
+    Generate pertanyaan + opsi jawaban dari context percakapan (via /api/chat).
     """
     percakapan = ""
     if isinstance(context, list):
@@ -93,30 +114,37 @@ def generate_question(topic: str, context: Union[str, list] = "") -> dict:
             opts = ["Belum gajian", "Lupa bayar", "Tagihan tinggi", "Lainnya"]
         return {"question": q, "options": opts}
 
+    # Ambil jawaban terakhir user jika ada
+    last_answer = ""
+    if isinstance(context, list) and len(context) > 1:
+        last_answer = context[-1].get('a', '')
+
     prompt = (
-        f"Mode: {topic}. Percakapan: {percakapan}. "
-        "Buat 1 pertanyaan singkat dengan 4 opsi jawaban. "
-        "Format JSON: {\"question\": \"...\", \"options\": [\"...\",\"...\",\"...\",\"...\"]}. "
-        "Jawab maksimal 7 kata per field."
+        f"Mode: {topic}. Percakapan: {percakapan}. Jawaban terakhir: {last_answer}. Buat 1 pertanyaan CS singkat (max 20 kata, relevan, tidak duplikat) dan 4 opsi jawaban (max 7 kata/opsi). Format: {{\"question\":\"...\", \"options\":[\"...\",\"...\",\"...\",\"...\"]}}. Tanpa penjelasan lain."
     )
 
     print("[DEBUG PROMPT]", prompt)
 
-    key = cache_key(prompt, "generate_question_ollama")
+    key = cache_key(prompt, "generate_question_ollama_chat")
     if key in _ollama_cache:
         result_json = _ollama_cache[key]
     else:
         payload = {
             "model": OLLAMA_MODEL,
-            "prompt": prompt,
+            "messages": [
+                {"role": "system", "content": "Kamu adalah asisten customer service yang membantu membuat pertanyaan dan opsi jawaban."},
+                {"role": "user", "content": prompt}
+            ],
             "stream": False
         }
         try:
-            resp = requests.post(OLLAMA_URL, json=payload, timeout=60)
+            resp = requests.post(OLLAMA_URL, json=payload, timeout=120)
             resp.raise_for_status()
             data = resp.json()
-            result_json = data.get("response", "")
-        except Exception:
+            # /api/chat returns 'message' with 'content'
+            result_json = data.get("message", {}).get("content", "")
+        except Exception as e:
+            print(f"[OLLAMA ERROR][generate_question] {e}")
             result_json = ""
         _ollama_cache[key] = result_json
 

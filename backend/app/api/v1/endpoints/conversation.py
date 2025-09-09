@@ -87,11 +87,18 @@ def get_status_dihubungi_options():
 
 
 # Endpoint untuk generate pertanyaan baru (tanpa menyimpan, rapi)
+
 @router.post("/generate-simulation-questions")
 async def generate_simulation_questions(request: Request):
     body = await request.json()
     topic = body.get("topic")
     conversation = body.get("conversation", [])
+    status = body.get("status")
+    # Jika sudah 6 step, return prediksi, bukan pertanyaan baru
+    if isinstance(conversation, list) and len(conversation) >= 6:
+        answers = [item.get("a", "") for item in conversation if isinstance(item, dict) and item.get("a", "").strip()]
+        prediction = predict_status_promo_ollama(answers)
+        return {"is_last": True, "prediction": prediction}
     result = generate_question(topic, conversation)
     return result
 
