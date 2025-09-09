@@ -72,17 +72,26 @@ def predict_status_promo_ollama(answers: list) -> dict:
             print(f"[OLLAMA ERROR][predict_status_promo_ollama] {e}")
             content = ""
         _ollama_cache[key] = content
-    # Parsing output sederhana
+    # Parsing output dengan regex agar robust
     result = {}
-    for line in content.split(','):
-        if ':' in line:
-            k, v = line.split(':', 1)
-            result[k.strip().lower().replace(' ', '_')] = v.strip()
-    # Standarisasi key
+    # Regex untuk ekstrak field
+    patterns = {
+        'status': r'Status\s*:\s*([^,\n]+)',
+        'promo': r'Promo\s*:\s*([^,\n]+)',
+        'estimasi': r'Estimasi\s*:\s*([^,\n]+)',
+        'alasan': r'Alasan\s*:\s*([^,\n]+)'
+    }
+    for key, pat in patterns.items():
+        m = re.search(pat, content, re.IGNORECASE)
+        if m:
+            result[key] = m.group(1).strip()
+        else:
+            result[key] = ""
+    # Standarisasi key dan mapping ke frontend
     return {
         "status": result.get("status", ""),
-        "promo": result.get("promo", ""),
-        "estimasi_bayar": result.get("estimasi_pembayaran", ""),
+        "jenis_promo": result.get("promo", ""),
+        "estimasi_pembayaran": result.get("estimasi", ""),
         "alasan": result.get("alasan", "")
     }
 

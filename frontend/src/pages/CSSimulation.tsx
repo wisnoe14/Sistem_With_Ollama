@@ -496,7 +496,26 @@ const CSSimulation = () => {
                 const data = await response.json();
                 if (data.is_last) {
                     // Prediction hanya jika is_last
-                    const prediction = data.prediction;
+                    // Kirim permintaan prediksi lengkap agar field tidak kosong
+                    const predictRes = await fetch(`${API_BASE_URL}/conversation/predict`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token ? { Authorization: `Bearer ${token}` } : {})
+                        },
+                        body: JSON.stringify({
+                            customer_id,
+                            topic,
+                            conversation: newConversation,
+                        }),
+                    });
+                    let prediction = data.prediction;
+                    if (predictRes.ok) {
+                        const predictData = await predictRes.json();
+                        if (predictData && predictData.result) {
+                            prediction = predictData.result;
+                        }
+                    }
                     setResult(prediction);
                     const historyItem: HistoryItem = {
                         date: new Date().toLocaleString('id-ID'),

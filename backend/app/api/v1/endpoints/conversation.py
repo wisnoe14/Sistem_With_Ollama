@@ -142,11 +142,25 @@ async def generate_simulation_questions(request: Request):
 
 
 # Endpoint prediksi status, promo, dsb (rapi)
+
 @router.post("/predict")
 def predict_final_endpoint(req: FinalPredictRequest):
     answers = [item["a"] for item in req.conversation if "a" in item and str(item["a"]).strip()]
+    # Ambil status dihubungi dari conversation jika ada
+    status_dihubungi = ""
+    for item in req.conversation:
+        if isinstance(item, dict) and item.get("q", "").lower().strip() == "status dihubungi?":
+            status_dihubungi = item.get("a", "")
+            break
     prediction_result = predict_status_promo_ollama(answers)
-    return {"result": prediction_result}
+    # Gabungkan dengan field wajib
+    result = {
+        "customer_id": req.customer_id,
+        "mode": req.topic,
+        "status_dihubungi": status_dihubungi,
+        **prediction_result
+    }
+    return {"result": result}
 
 
 
