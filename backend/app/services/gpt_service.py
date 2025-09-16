@@ -3,6 +3,7 @@ import os
 import json
 import re
 import requests
+import subprocess
 from typing import Union
 
 
@@ -20,12 +21,11 @@ def cache_key(*args, **kwargs):
     return hashlib.md5(key_str.encode()).hexdigest()
 
 
-
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3")
+1
 
 # Cek dan pull model jika belum ada
-import subprocess
 import requests as reqs
 def ensure_ollama_model(model_name: str):
     try:
@@ -38,18 +38,24 @@ def ensure_ollama_model(model_name: str):
     except Exception as e:
         print(f"[WARNING] Tidak bisa cek/pull model Ollama: {e}")
 
-ensure_ollama_model(OLLAMA_MODEL)
 
+ensure_ollama_model(OLLAMA_MODEL)
 
 
 def predict_status_promo_ollama(answers: list) -> dict:
     """
-    Prediksi status, promo, estimasi bayar, alasan menggunakan Ollama (via /api/chat).
+    Prediksi status, promo, estimasi bayar, alasan, dan minat berlangganan menggunakan Ollama.
     """
     percakapan = " | ".join([str(a) for a in answers if a])
     prompt = (
-        f"Percakapan: {percakapan}. Prediksi status (Pelanggan tidak dapat dihubungi, Closing, Pelanggan dapat dihubungi, Bersedia Membayar) dan promo (Tidak Ada Promo, Promo Diskon, Promo Cashback, Promo Gratis Bulan, Promo Lainnya). Format: Status: <status>, Promo: <jenis_promo>, Estimasi: <estimasi atau 'Belum tersedia'>, Alasan: <alasan ringkas, max 7 kata>."
+        f"Percakapan: {percakapan}. "
+        f"Prediksi status (Pelanggan tidak dapat dihubungi, Closing, Pelanggan dapat dihubungi, Bersedia Membayar), "
+        f"promo (Tidak Ada Promo, Promo Diskon, Promo Cashback, Promo Gratis Bulan, Promo Lainnya), "
+        f"minat berlangganan (Ya, Tidak, Ragu). "
+        f"Format: Status: <status>, Promo: <jenis_promo>, Estimasi: <estimasi atau 'Belum tersedia'>, "
+        f"Alasan: <alasan ringkas, max 7 kata>, Minat: <Ya/Tidak/Ragu>."
     )
+
     key = cache_key(prompt, "predict_status_promo_ollama_chat")
     if key in _ollama_cache:
         content = _ollama_cache[key]
@@ -57,7 +63,10 @@ def predict_status_promo_ollama(answers: list) -> dict:
         payload = {
             "model": OLLAMA_MODEL,
             "messages": [
-                {"role": "system", "content": "Kamu adalah asisten customer service yang membantu memprediksi status dan promo pelanggan."},
+                {
+                    "role": "system",
+                    "content": "Kamu adalah asisten customer service yang membantu memprediksi status, promo, dan minat pelanggan."
+                },
                 {"role": "user", "content": prompt}
             ],
             "stream": False
@@ -66,20 +75,20 @@ def predict_status_promo_ollama(answers: list) -> dict:
             resp = requests.post(OLLAMA_URL, json=payload, timeout=120)
             resp.raise_for_status()
             data = resp.json()
-            # /api/chat returns 'message' with 'content'
             content = data.get("message", {}).get("content", "")
         except Exception as e:
             print(f"[OLLAMA ERROR][predict_status_promo_ollama] {e}")
             content = ""
         _ollama_cache[key] = content
-    # Parsing output dengan regex agar robust
+
+    # Parsing output dengan regex
     result = {}
-    # Regex untuk ekstrak field
     patterns = {
         'status': r'Status\s*:\s*([^,\n]+)',
         'promo': r'Promo\s*:\s*([^,\n]+)',
         'estimasi': r'Estimasi\s*:\s*([^,\n]+)',
-        'alasan': r'Alasan\s*:\s*([^,\n]+)'
+        'alasan': r'Alasan\s*:\s*([^,\n]+)',
+        'minat': r'Minat\s*:\s*([^,\n]+)'
     }
     for key, pat in patterns.items():
         m = re.search(pat, content, re.IGNORECASE)
@@ -87,52 +96,48 @@ def predict_status_promo_ollama(answers: list) -> dict:
             result[key] = m.group(1).strip()
         else:
             result[key] = ""
-    # Standarisasi key dan mapping ke frontend
+
     return {
         "status": result.get("status", ""),
         "jenis_promo": result.get("promo", ""),
         "estimasi_pembayaran": result.get("estimasi", ""),
-        "alasan": result.get("alasan", "")
+        "alasan": result.get("alasan", ""),
+        "minat_berlangganan": result.get("minat", "")
     }
-
-
-
 
 
 def generate_question(topic: str, context: Union[str, list] = "") -> dict:
     """
     Generate pertanyaan + opsi jawaban dari context percakapan (via /api/chat).
+    Hanya relevan dengan domain ICONNET (internet, tagihan, promo, retention, winback).
     """
     percakapan = ""
     if isinstance(context, list):
-        percakapan = " | ".join([f"Q:{c.get('q','')} A:{c.get('a','')}" for c in context if isinstance(c, dict) and c.get('a', '').strip()])
+        percakapan = " | ".join([
+            f"Q:{c.get('q','')} A:{c.get('a','')}"
+            for c in context if isinstance(c, dict) and c.get('a', '').strip()
+        ])
     elif isinstance(context, str):
         percakapan = context
 
-    # Fallback: jika context hanya status dihubungi, berikan pertanyaan default
-    if isinstance(context, list) and len(context) == 1 and context[0].get('q', '').lower().strip() == 'status dihubungi?' and context[0].get('a', '').strip().lower() == 'bisa dihubungi':
-        # Default question per topic
-        if topic == 'winback':
-            q = "Selamat Pagi/Siang/Sore Perkenalkan Saya (Nama Agen) Dari ICONNET, Apakah Benar Saya Terhubung Dengan (Nama Pelanggan) ?, Baik Bapak/Ibu. Kami Melihat Bahwa Layanan ICONNET Bapak/Ibu Sedang Terputus dan Kami Ingin Tahu Apakah Ada Kendala Yang Bisa Kami Bantu?"
-            opts = ["Butuh layanan", "Promo menarik", "Pelayanan lebih baik", "Lainnya"]
-        elif topic == 'retention':
-            q = "Selamat Pagi/Siang/Sore Perkenalkan Saya (Nama Agen) Dari ICONNET, Apakah Benar Saya Terhubung Dengan (Nama Pelanggan) ?, Baik Bapak/Ibu. Kami Melihat Bahwa Layanan ICONNET Bapak/Ibu Sedang Terputus dan Kami Ingin Tahu Apakah Ada Kendala Yang Bisa Kami Bantu?"
-            opts = ["Tagihan", "Teknis", "Layanan", "Lainnya"]
-        else:
-            q = "Selamat Pagi/Siang/Sore Perkenalkan Saya (Nama Agen) Dari ICONNET, Apakah Benar Saya Terhubung Dengan (Nama Pelanggan) ?, Baik Bapak/Ibu. Kami Melihat Bahwa Layanan ICONNET Bapak/Ibu Sedang Terputus dan Kami Ingin Tahu Apakah Ada Kendala Yang Bisa Kami Bantu?"
-            opts = ["Belum gajian", "Lupa bayar", "Tagihan tinggi", "Lainnya"]
-        return {"question": q, "options": opts}
-
-    # Ambil jawaban terakhir user jika ada
     last_answer = ""
-    if isinstance(context, list) and len(context) > 1:
+    if isinstance(context, list) and len(context) > 0:
         last_answer = context[-1].get('a', '')
 
-    prompt = (
-        f"Mode: {topic}. Percakapan: {percakapan}. Jawaban terakhir: {last_answer}. Buat 1 pertanyaan CS singkat (max 20 kata, relevan, tidak duplikat) dan 4 opsi jawaban (max 7 kata/opsi). Format: {{\"question\":\"...\", \"options\":[\"...\",\"...\",\"...\",\"...\"]}}. Tanpa penjelasan lain."
-    )
+    prompt = f"""
+"Sebagai Customer Service ICONNET, buatlah pertanyaan yang sesuai dengan jawaban pelanggan sebelumnya berkaitan dengan topik {topic}. Pertanyaan harus singkat, formal, dan sopan. Sertakan 4 opsi jawaban singkat yang relevan dengan layanan ICONNET yang mencakup internet, promo, pembayaran, retention, atau winback. Pastikan pertanyaan tidak bersifat umum dan fokus pada layanan internet."
 
-    print("[DEBUG PROMPT]", prompt)
+Contoh Format:
+{{
+  "question": "Apa alasan utama Anda menunda pembayaran?",
+  "options": ["Belum gajian", "Lupa bayar", "Tagihan terlalu tinggi", "Lainnya"]
+}}
+
+Percakapan sejauh ini: {percakapan}
+Jawaban terakhir pelanggan: {last_answer}
+
+Buat pertanyaan baru dengan format JSON seperti contoh.
+""".strip()
 
     key = cache_key(prompt, "generate_question_ollama_chat")
     if key in _ollama_cache:
@@ -141,7 +146,7 @@ def generate_question(topic: str, context: Union[str, list] = "") -> dict:
         payload = {
             "model": OLLAMA_MODEL,
             "messages": [
-                {"role": "system", "content": "Kamu adalah asisten customer service yang membantu membuat pertanyaan dan opsi jawaban."},
+                {"role": "system", "content": "Kamu adalah CS ICONNET yang hanya menanyakan hal terkait layanan internet ICONNET."},
                 {"role": "user", "content": prompt}
             ],
             "stream": False
@@ -150,34 +155,40 @@ def generate_question(topic: str, context: Union[str, list] = "") -> dict:
             resp = requests.post(OLLAMA_URL, json=payload, timeout=120)
             resp.raise_for_status()
             data = resp.json()
-            # /api/chat returns 'message' with 'content'
             result_json = data.get("message", {}).get("content", "")
         except Exception as e:
             print(f"[OLLAMA ERROR][generate_question] {e}")
             result_json = ""
         _ollama_cache[key] = result_json
 
-    print("[DEBUG OLLAMA RAW OUTPUT]", result_json)
-
-    # Robust JSON parsing (regex)
+    # Parsing JSON hasil model
     try:
         match = re.search(r"\{.*\}", result_json, re.DOTALL)
         if match:
             data = json.loads(match.group(0))
         else:
             data = {}
-        q = truncate_to_n_words(data.get("question", ""), 7)
+
+        q = truncate_to_n_words(data.get("question", ""), 12)
         opts = [truncate_to_n_words(o, 7) for o in data.get("options", []) if isinstance(o, str) and o.strip()]
-        # Fallback jika parsing sukses tapi kosong
+
+        # Fallback jika hasil kosong / tidak relevan
         if not q or not opts:
-            return {"question": "Pertanyaan tidak tersedia", "options": ["Jawaban 1", "Jawaban 2", "Jawaban 3", "Jawaban 4"]}
+            if topic == "retention":
+                q = "Apa kendala utama Anda dalam menggunakan ICONNET?"
+                opts = ["Tagihan mahal", "Gangguan teknis", "Layanan kurang", "Lainnya"]
+            elif topic == "winback":
+                q = "Apa alasan Anda ingin berhenti berlangganan?"
+                opts = ["Harga mahal", "Kualitas layanan", "Butuh promo", "Lainnya"]
+            else:
+                q = "Apa alasan utama keterlambatan pembayaran ICONNET?"
+                opts = ["Belum gajian", "Lupa bayar", "Tagihan tinggi", "Lainnya"]
+
         return {"question": q, "options": opts}
+
     except Exception as e:
         print("[DEBUG PARSE ERROR]", e)
         return {"question": "Pertanyaan tidak tersedia", "options": ["Jawaban 1", "Jawaban 2", "Jawaban 3", "Jawaban 4"]}
-
-
-# Tidak dipakai, hapus process_customer_answer
 
 
 def save_conversation_to_excel(
@@ -190,20 +201,23 @@ def save_conversation_to_excel(
 ) -> str:
     """
     Simpan riwayat percakapan ke file Excel (openpyxl).
-    Kolom: customer_id, mode, status_dihubungi, pertanyaan, jawaban, prediksi_status, promo, estimasi_bayar, alasan, timestamp
+    Kolom: customer_id, mode, status_dihubungi, pertanyaan, jawaban,
+           prediksi_status, promo, estimasi_bayar, alasan, minat_berlangganan, timestamp
     """
     from openpyxl import Workbook, load_workbook
     import datetime
+
     if prediction is None:
-        # Otomatis prediksi jika belum ada
         answers = [item.get("a", "") for item in percakapan if item.get("a", "")]
         prediction = predict_status_promo_ollama(answers)
+
     pred_status = prediction.get("status", "")
-    promo = prediction.get("promo", "")
-    estimasi_bayar = prediction.get("estimasi_bayar", "")
+    promo = prediction.get("jenis_promo", "")
+    estimasi_bayar = prediction.get("estimasi_pembayaran", "")
     alasan = prediction.get("alasan", "")
+    minat = prediction.get("minat_berlangganan", "")
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    # Cek apakah file sudah ada
+
     if os.path.exists(filename):
         wb = load_workbook(filename)
         ws = wb.active
@@ -211,9 +225,10 @@ def save_conversation_to_excel(
         wb = Workbook()
         ws = wb.active
         ws.append([
-            "customer_id", "mode", "status_dihubungi", "pertanyaan", "jawaban", "prediksi_status", "promo", "estimasi_bayar", "alasan", "timestamp"
+            "customer_id", "mode", "status_dihubungi", "pertanyaan", "jawaban",
+            "prediksi_status", "promo", "estimasi_bayar", "alasan", "minat_berlangganan", "timestamp"
         ])
-    # Simpan setiap step percakapan
+
     for step in percakapan:
         pertanyaan = step.get("q", "")
         jawaban = step.get("a", "")
@@ -227,6 +242,7 @@ def save_conversation_to_excel(
             promo,
             estimasi_bayar,
             alasan,
+            minat,
             timestamp
         ])
     wb.save(filename)
