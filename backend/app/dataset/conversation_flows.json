@@ -1,0 +1,165 @@
+{
+  "telecollection": {
+    "opening": {
+      "question": "Selamat siang. Perkenalkan saya {agent_name} dari ICONNET, apakah benar saya terhubung dengan {customer_name}? Mohon maaf, Apakah bapak/ibu sudah melakukan pembayaran bulanan ICONNET?",
+      "options": ["Ya", "Benar", "Belum", "Sudah bayar"]
+    },
+    "payment_info": {
+      "question": "Baik Bapak/Ibu, kami ingin menginformasikan bahwa ada tagihan yang belum terbayar. Apakah Bapak/Ibu sudah mengetahui hal ini?",
+      "options": ["Sudah tahu", "Belum tahu", "Sudah bayar", "Lupa"]
+    },
+    "payment_confirmation": {
+      "already_paid": {
+        "question": "Terima kasih atas informasinya. Baik, kami akan mengecek ke sistem terlebih dahulu dan akan menghubungi kembali jika diperlukan. Terima kasih.",
+        "options": ["Terima kasih", "Tolong dicek ya", "OK", "Selesai"]
+      },
+      "not_paid": {
+        "question": "Baik Bapak/Ibu, untuk pembayaran bisa dilakukan melalui berbagai cara seperti mobile banking, ATM, atau datang langsung ke kantor. Kapan kira-kira bisa melakukan pembayaran?"
+      }
+    },
+    "payment_reason": {
+      "question": "Terima kasih atas informasinya. Untuk membantu lebih baik, boleh dijelaskan kondisi pembayaran Bapak/Ibu yang sebenarnya?",
+      "options": ["Sudah bayar tapi belum masuk sistem", "Belum sempat bayar", "Ada kendala pembayaran", "Lainnya"]
+    },
+    "payment_schedule": {
+      "question": "Baik Bapak/Ibu, kapan kira-kira pembayaran bisa dilakukan? Kami bisa memberikan informasi cara pembayaran yang mudah.",
+      "options": ["Hari ini", "Besok", "Minggu depan", "Perlu waktu lebih lama"]
+    },
+    "service_continuation": {
+      "question": "Baik Bapak/Ibu, untuk ke depannya setelah tunggakan ini selesai, apakah Bapak/Ibu masih berminat melanjutkan berlangganan ICONNET?",
+      "options": ["Ya, masih berminat", "Belum pasti", "Tidak berminat", "Tergantung layanan"]
+    },
+
+    "already_paid": {
+      "question": "Mohon maaf Bapak/Ibu, mungkin ada keterlambatan sistem. Kami akan cek ulang dan konfirmasi. Terima kasih atas informasinya.",
+      "options": ["Terima kasih", "Tolong dicek ya", "OK", "Selesai"]
+    },
+    "payment_plan": {
+      "question": "Kapan rencana Bapak/Ibu untuk melakukan pembayaran? Kami bisa bantu informasi cara pembayaran yang mudah.",
+      "options": ["Hari ini", "Besok", "Akhir pekan", "Masih kesulitan"]
+    },
+    "payment_difficulty": {
+      "question": "Kami memahami situasi Bapak/Ibu. Apakah ada cara yang bisa kami bantu? Mungkin cicilan atau penundaan pembayaran?",
+      "options": ["Mau cicilan", "Minta penundaan", "Butuh keringanan", "Tidak bisa bayar"]
+    },
+    "payment_reminder": {
+      "question": "Baik Bapak/Ibu, kami akan catat jadwal pembayaran tersebut. Apakah perlu kami kirimkan reminder atau informasi cara pembayaran?",
+      "options": ["Kirim reminder", "Info cara bayar", "Tidak perlu", "Email saja"]
+    },
+    "cannot_pay": {
+      "question": "Kami memahami kondisi Bapak/Ibu. Untuk layanan ke depannya, apakah masih berminat melanjutkan berlangganan ICONNET?",
+      "options": ["Masih mau lanjut", "Mau berhenti", "Belum pasti", "Tergantung kondisi"]
+    },
+    "follow_up_schedule": {
+      "question": "Baik Bapak/Ibu, kami akan koordinasi dengan tim finance untuk solusi pembayaran yang sesuai. Kapan waktu yang tepat untuk menghubungi kembali?",
+      "options": ["Besok", "3 hari lagi", "Minggu depan", "Saya yang hubungi"]
+    },
+
+    "closing": {
+      "general": {
+        "question": "Baik Bapak/Ibu, terima kasih atas waktunya. Jangan lupa untuk melakukan pembayaran ya. Selamat siang.",
+        "options": ["Terima kasih", "Selamat siang", "OK"]
+      },
+      "selesai": {
+        "question": "Terima kasih Bapak/Ibu atas waktu dan kerjasamanya. Semoga harinya menyenangkan. Selamat siang!",
+        "options": ["Selamat siang"]
+      }
+    },
+    "wrong_number": {
+      "question": "Mohon maaf mengganggu. Terima kasih.",
+      "options": ["Tidak apa-apa", "OK"]
+    },
+    "confirmation_reminder": {
+      "question": "Baik Bapak/Ibu, semua sudah tercatat. Terima kasih atas kerjasamanya. Jangan lupa untuk melakukan pembayaran sesuai jadwal ya.",
+      "options": ["Terima kasih", "Siap", "OK", "Selesai"]
+    },
+    "stop_service_after_payment": {
+      "question": "Baik Bapak/Ibu, untuk proses penghentian layanan nanti akan kami koordinasi setelah tunggakan diselesaikan. Terima kasih atas informasinya.",
+      "options": ["Mengerti", "OK", "Terima kasih", "Selesai"]
+    },
+    "continue_service_thanks": {
+      "question": "Terima kasih Bapak/Ibu masih setia dengan ICONNET. Kami akan usahakan memberikan layanan terbaik. Ada yang ingin ditanyakan lagi?",
+      "options": ["Tidak ada", "Sudah cukup", "Terima kasih", "Selesai"]
+    }
+  },
+  "winback": {
+    "opening": {
+      "question": "Selamat siang. Perkenalkan saya {agent_name} dari ICONNET, apakah benar saya terhubung dengan {customer_name}? Terima kasih, Bapak/Ibu. Di sistem kami terlihat layanan ICONNET Bapak/Ibu sedang terputus. Apakah ada kendala tertentu yang menyebabkan layanan terputus?",
+      "options": ["Ada masalah", "Tidak puas", "Pindah tempat", "Alasan lain"]
+    },
+    "service_issue": {
+      "question": "Terima kasih atas informasinya. Kami memahami situasi Bapak/Ibu. Tim teknis kami siap membantu mengatasi masalah tersebut. Apakah Bapak/Ibu berkenan jika kami bantu reaktivasi dengan perbaikan layanan?",
+      "options": ["Ya, berkenan", "Tidak tertarik", "Mau tahu detailnya", "Nanti saja"]
+    },
+    "reactivation_offer": {
+      "question": "Excellent! Terima kasih atas kepercayaannya kembali pada ICONNET. Tim kami akan segera follow up dalam 24 jam untuk koordinasi aktivasi dan perbaikan yang dijanjikan. Apakah ada nomor yang lebih mudah dihubungi?",
+      "options": ["Selesai"]
+    },
+    "interest_check": {
+      "question": "Baik, saya memahami situasi Bapak/Ibu. Apakah Bapak/Ibu masih berminat untuk melanjutkan berlangganan ICONNET?",
+      "options": ["Ya, masih minat", "Tidak minat lagi", "Masih bingung", "Tergantung kondisi"]
+    },
+    "promo_offer": {
+      "question": "Baik Bapak/Ibu, kami punya promo khusus gratis 1 bulan untuk reaktivasi layanan. Apakah Bapak/Ibu mau melanjutkan berlangganan dengan promo ini?",
+      "options": ["Ya, mau dengan promo", "Masih pertimbangan", "Butuh info detail", "Tidak tertarik"]
+    },
+
+    "closing": {
+      "success": {
+        "question": "Excellent! Tim kami akan segera menghubungi untuk proses reaktivasi. Terima kasih Bapak/Ibu!",
+        "options": ["Selesai"]
+      },
+      "success_reactivation": {
+        "question": "Excellent! Tim kami akan segera menghubungi untuk proses reaktivasi. Terima kasih Bapak/Ibu!",
+        "options": ["Terima kasih", "Selesai"]
+      },
+      "not_interested": {
+        "question": "Baik Bapak/Ibu, terima kasih atas waktunya. Kami hormati keputusan Bapak/Ibu. Selamat siang.",
+        "options": ["Terima kasih", "Selamat siang", "Sampai jumpa"]
+      },
+      "wrong_number": {
+        "question": "Mohon maaf mengganggu. Terima kasih, selamat siang.",
+        "options": ["Tidak apa-apa", "Selamat siang"]
+      },
+      "general": {
+        "question": "Terima kasih atas waktunya, Bapak/Ibu. Selamat siang.",
+        "options": ["Selamat siang", "Terima kasih"]
+      }
+    }
+  },
+  "retention": {
+    "opening": {
+      "question": "Selamat siang. Perkenalkan saya {agent_name} dari ICONNET, apakah benar saya terhubung dengan {customer_name}? Kami menghargai Bapak/Ibu sebagai pelanggan setia ICONNET. Bagaimana pengalaman menggunakan layanan kami selama ini?",
+      "options": ["Sangat puas", "Puas", "Cukup", "Kurang puas"]
+    },
+    "satisfaction_follow": {
+      "question": "Terima kasih atas feedbacknya. Untuk menjaga kualitas layanan, apakah ada saran atau masukan yang ingin Bapak/Ibu sampaikan?",
+      "options": ["Tidak ada", "Perlu peningkatan speed", "Harga lebih kompetitif", "Customer service"]
+    },
+    "loyalty_program": {
+      "question": "Sebagai apresiasi loyalitas Bapak/Ibu, kami memiliki program khusus untuk pelanggan setia. Apakah Bapak/Ibu tertarik mendengar penawaran spesial kami?",
+      "options": ["Ya, tertarik", "Tidak tertarik", "Mau tahu dulu", "Nanti saja"]
+    },
+    "closing": {
+      "question": "Terima kasih atas waktu dan kepercayaannya. Kami akan terus berusaha memberikan layanan terbaik untuk Bapak/Ibu. Selamat siang!",
+      "options": ["Terima kasih", "Selamat siang", "OK"]
+    }
+  },
+  "keywords": {
+    "belum_bayar": [
+      "belum sempat bayar", "lupa bayar", "belum gajian", "tagihan terlalu tinggi", 
+      "kendala keuangan", "masih diproses", "menunggu gajian", "masih dicek", 
+      "masih menunggu", "masih proses", "masih tunggu", "masih belum ada dana", 
+      "masih belum cukup", "masih belum bisa", "masih belum bayar", "belum bayar"
+    ],
+    "sudah_bayar": [
+      "sudah bayar", "sudah transfer", "sudah lunas", "sudah dibayar", "sudah selesai"
+    ],
+    "closing": [
+      "terima kasih", "cukup", "tidak ada lagi", "sudah jelas", "tidak perlu"
+    ],
+    "wrong_number": [
+      "bukan", "salah", "siapa"
+    ]
+  }
+}

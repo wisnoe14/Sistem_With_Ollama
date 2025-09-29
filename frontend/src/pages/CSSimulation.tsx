@@ -1,35 +1,65 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
-    Bot, 
-    Settings, 
-    Sparkles, 
-    ChevronDown, 
-    CreditCard, 
-    ShieldCheck, 
-    Target, 
-    Loader2, 
-    CheckCircle2, 
-    XCircle, 
-    FileDown,
-    LogOut
-} from 'lucide-react';
+// import * as XLSX from "xlsx";
 import { useNavigate } from 'react-router-dom';
-
+import {
+    Bot,
+    Settings,
+    ChevronDown,
+    CreditCard,
+    ShieldCheck,
+    Target,
+    CheckCircle2,
+    XCircle,
+} from 'lucide-react';
+import { SimulationHistory } from "../components/SimulationHistory";
 // Fungsi untuk memanggil intent OpenAI
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1/endpoints";
+
+
+
 
 const CSSimulation = () => {
+    // Opsi alasan tidak dapat dihubungi
+    const alasanOptions = [
+        "Nomor tidak aktif",
+        "Tidak diangkat",
+        "Salah sambung",
+        "Lainnya"
+    ];
     // One-shot generation states
     // Step-by-step mode: no local allQuestions/stepIndex
     const [topic, setTopic] = useState<Topic>("telecollection");
     const [currentQuestion, setCurrentQuestion] = useState<ScenarioItem | null>(null);
     const [conversation, setConversation] = useState<ConversationItem[]>([]);
     const [result, setResult] = useState<Prediction | null>(null);
+    const [prediction, setPrediction] = useState<Prediction | null>(null);
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
-    const [simulationHistory, setSimulationHistory] = useState<HistoryItem[]>([]);
-    const [isStatusStep, setIsStatusStep] = useState(false);
-    const navigate = useNavigate();
+    const [simulationHistory, setSimulationHistory] = useState<HistoryItem[]>(() => {
+        const saved = localStorage.getItem('simulationHistory');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    // Helper untuk menambah data ke history dengan format tabel
+    function addToSimulationHistory({ status, alasan, estimasi_pembayaran }: { status: string; alasan: string; estimasi_pembayaran?: string }) {
+    const now = new Date();
+    const tanggal = now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID');
+    const customer_id = sessionStorage.getItem('customer_id') || '-';
+    const nama = sessionStorage.getItem('customer_name') || '-';
+    const topik = topic;
+    const item = { tanggal, customer_id, nama, topik, status, alasan, estimasi_pembayaran: estimasi_pembayaran || '-' };
+        setSimulationHistory(prev => {
+            const updated = [item, ...prev];
+            localStorage.setItem('simulationHistory', JSON.stringify(updated));
+            return updated;
+        });
+    }
+    const [statusDihubungi, setStatusDihubungi] = useState<string | null>(null);
+    const [showAlasanTidakDihubungi, setShowAlasanTidakDihubungi] = useState(false);
+    const [selectedAlasan, setSelectedAlasan] = useState<string | null>(null);
+    // const [showCustomerReasonView, setShowCustomerReasonView] = useState(false);
+    // const [lastAlasan, setLastAlasan] = useState<string | null>(null);
 
 
     // --- Backend Configuration ---
@@ -41,6 +71,60 @@ const CSSimulation = () => {
     type ScenarioItem = {
         q: string;
         options: string[];
+        is_closing?: boolean; // tambahkan properti ini
+    };
+
+    // Fungsi untuk memanggil prediksi dan navigasi ke halaman hasil
+    // Fungsi untuk mengambil prediksi dan simpan ke history
+    const fetchPrediction = async () => {
+        setLoading(true);
+        try {
+            const customer_id = sessionStorage.getItem('customer_id') || "";
+            const token = sessionStorage.getItem('token');
+            // Pastikan conversation mengandung status dihubungi di awal
+            let conversationToSend = [...conversation];
+            if (
+                statusDihubungi &&
+                !conversationToSend.some(item => item.q.toLowerCase().includes('status dihubungi'))
+            ) {
+                conversationToSend = [
+                    { q: 'Status Dihubungi?', a: statusDihubungi || "" },
+                    ...conversationToSend
+                ];
+            }
+            // Ambil prediksi dari backend
+            const response = await fetch(`${API_BASE_URL}/conversation/predict`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({
+                    customer_id,
+                    topic,
+                    conversation: conversationToSend
+                })
+            });
+            if (!response.ok) throw new Error('Gagal mengambil prediksi');
+            const data = await response.json();
+            const prediction = data.result;
+            setResult(prediction);
+
+            // Simpan ke history (format tabel)
+            addToSimulationHistory({
+                status: prediction.status || "-",
+                alasan: prediction.alasan || "-",
+                estimasi_pembayaran: topic === "telecollection" ? (prediction.estimasi_pembayaran || "-") : undefined
+            });
+
+            // Navigasi ke halaman hasil
+            navigate('/result', { state: { prediction, topic } });
+        } catch (error) {
+            console.error('Gagal mengambil prediksi:', error);
+            alert('Gagal mengambil prediksi.');
+        } finally {
+            setLoading(false);
+        }
     };
 
     type ConversationItem = {
@@ -49,8 +133,8 @@ const CSSimulation = () => {
     };
 
     type Prediction = {
-    pertanyaan_cs?: string;
-    jawaban_pelanggan?: string;
+        pertanyaan_cs?: string;
+        jawaban_pelanggan?: string;
         customer_id?: string;
         mode?: string;
         status_dihubungi?: string;
@@ -64,19 +148,17 @@ const CSSimulation = () => {
     };
 
     type HistoryItem = {
-        date: string;
-        topic: string;
-        result: Prediction;
+        tanggal: string;
+        customer_id: string;
+        nama: string;
+        topik: string;
+        status: string;
+        alasan: string;
+        estimasi_pembayaran?: string;
     };
 
     // --- HELPER COMPONENTS ---
 
-    const LoadingSpinner = ({ text }: { text: string }) => (
-        <div className="flex items-center justify-center gap-2 text-white">
-            <Loader2 className="animate-spin h-5 w-5" />
-            <span>{text}</span>
-        </div>
-    );
 
     // --- CUSTOM DROPDOWN COMPONENT ---
     type DropdownOption = {
@@ -144,15 +226,13 @@ const CSSimulation = () => {
 
 
     // --- MAIN COMPONENTS ---
-    const ScenarioControls = ({ topic, setTopic, isGenerating, disabled, isSimulationRunning, onStart, onEnd }: {
+    const ScenarioControls = ({ topic, setTopic, isGenerating, disabled }: {
         topic: Topic;
         setTopic: (topic: Topic) => void;
         isGenerating: boolean;
         disabled: boolean;
-        isSimulationRunning: boolean;
-        onStart: () => void;
-        onEnd: () => void;
     }) => {
+        const navigate = useNavigate();
         const TOPICS = [
             { key: "telecollection", label: "Telecollection", description: "Penagihan & Recovery", icon: CreditCard },
             { key: "retention", label: "Retention", description: "Pencegahan Churn", icon: ShieldCheck },
@@ -168,13 +248,13 @@ const CSSimulation = () => {
             else setLocked(false);
         }, [isGenerating]);
         return (
-            <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-200 space-y-6">
-                <div className="flex items-center gap-3">
+            <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-200 flex flex-col h-full">
+                <div className="flex items-center gap-3 mb-4">
                     <Settings className="w-6 h-6 text-blue-600" />
                     <h3 className="text-lg font-bold text-gray-800">Pengaturan Skenario</h3>
                 </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-600 mb-2">Pilih Topik Simulasi</label>
+                <div className="mb-5">
+                    <label className="block text-sm font-medium text-gray-600 mb-2 mt-2">Pilih Topik Simulasi</label>
                     <CustomDropdown
                         options={TOPICS}
                         selected={topic}
@@ -182,7 +262,7 @@ const CSSimulation = () => {
                         disabled={disabled || locked}
                     />
                 </div>
-                <div className="p-4 rounded-xl bg-blue-50 border border-blue-200">
+                <div className="p-4 rounded-xl bg-blue-50 border border-blue-200 mb-4">
                     <div className="flex items-center gap-4">
                         <div className="bg-white p-2 rounded-full shadow-sm">
                             <SelectedIcon className="w-7 h-7 text-blue-600" />
@@ -193,46 +273,52 @@ const CSSimulation = () => {
                         </div>
                     </div>
                 </div>
-                <button
-                    className={`w-full px-6 py-4 rounded-xl font-bold text-white flex items-center justify-center gap-3 text-lg transition-all duration-300 transform active:scale-95 shadow-lg ${isSimulationRunning ? 'bg-red-600 hover:bg-red-700' : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'}`}
-                    onClick={() => {
-                        if (!locked) {
-                            if (isSimulationRunning) onEnd();
-                            else onStart();
-                        }
-                    }}
-                    disabled={isGenerating || locked}
-                >
-                    {isGenerating ? <LoadingSpinner text={isSimulationRunning ? 'Mengakhiri...' : 'Starting...'} /> : (
-                  <>
-                    {isSimulationRunning ? <LogOut className="w-6 h-6" /> : <Sparkles className="w-6 h-6" />}
-                    {isSimulationRunning ? 'End Simulasi' : 'Mulai Simulasi'}
-                  </>
-                )}
-                </button>
+                <div className="mt-auto">
+                    <button
+                        onClick={() => navigate('/Home')}
+                        className="w-full flex items-center justify-center gap-2 px-5 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg shadow transition-all text-base"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h4a2 2 0 012 2v1" /></svg>
+                        Keluar Simulasi
+                    </button>
+                </div>
             </div>
         );
     };
 
-    const AnswerInput = ({ question, options, onAnswer, loading }: {
+    // Ganti AnswerInput agar mendukung closing
+    const AnswerInput = ({ question, options, onAnswer, loading, isClosing, onFinish }: {
         question: string;
         options: string[];
         onAnswer: (answer: string) => void;
         loading: boolean;
+        isClosing?: boolean;
+        onFinish?: () => void;
     }) => {
         const [manualAnswer, setManualAnswer] = useState("");
 
-        const submitManual = () => {
-            if (manualAnswer.trim()) {
-                onAnswer(manualAnswer);
-                setManualAnswer("");
-            }
-        };
+        if (isClosing) {
+            // Tampilkan hanya pertanyaan penutup dan tombol Selesai
+            return (
+                <div className="w-full bg-white/80 backdrop-blur-lg p-6 rounded-2xl shadow-xl border border-gray-200 space-y-5 flex flex-col items-center">
+                    <p className="text-xl font-semibold text-gray-800 mb-6" style={{ fontFamily: 'Times New Roman, Times, serif', whiteSpace: 'pre-line', lineHeight: '1.6', textAlign: 'center' }}>{question}</p>
+                    <button
+                        className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg text-lg transition-all hover:bg-blue-700"
+                        onClick={onFinish}
+                    >
+                        Selesai
+                    </button>
+                </div>
+            );
+        }
 
         // Batasi opsi maksimal 4 dan fallback jika kosong
-        const limitedOptions = Array.isArray(options) && options.length > 0 ? options.slice(0, 4) : ['Jawab manual'];
+        let limitedOptions: string[] = [];
+        if (Array.isArray(options) && options.length > 0) {
+            limitedOptions = options.slice(0, 4);
+        }
         return (
-            <div className="w-full max-w-2xl mx-auto bg-white/80 backdrop-blur-lg p-6 rounded-2xl shadow-xl border border-gray-200 space-y-5">
+            <div className="w-full bg-white/80 backdrop-blur-lg p-6 rounded-2xl shadow-xl border border-gray-200 space-y-5">
                 <div>
                     <p className="text-sm font-semibold text-blue-700 mb-2">Pertanyaan AI:</p>
                     <p
@@ -272,8 +358,8 @@ const CSSimulation = () => {
                         onChange={(e) => setManualAnswer(e.target.value)}
                         disabled={loading}
                     />
-                    <button onClick={submitManual} disabled={loading || !manualAnswer.trim()} className="w-full py-3 bg-gray-700 hover:bg-gray-800 text-white font-semibold rounded-lg transition-all disabled:bg-gray-400">
-                        {loading ? 'Memproses...' : 'Kirim Jawaban Manual'}
+                    <button onClick={() => { if (manualAnswer.trim()) { onAnswer(manualAnswer); setManualAnswer(""); } }} disabled={loading || !manualAnswer.trim()} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all disabled:bg-gray-400">
+                        {loading ? 'Memproses...' : (isClosing ? 'Selesai' : 'Lanjutkan')}
                     </button>
                 </div>
             </div>
@@ -289,7 +375,7 @@ const CSSimulation = () => {
         return (
             <div className="w-full max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-2xl border border-gray-200 space-y-6">
                 <div className="text-center">
-                    <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${isSuccess ? 'bg-green-100' : 'bg-red-100'}`}> 
+                    <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${isSuccess ? 'bg-green-100' : 'bg-red-100'}`}>
                         {isSuccess ? <CheckCircle2 className="w-10 h-10 text-green-600" /> : <XCircle className="w-10 h-10 text-red-600" />}
                     </div>
                     <h2 className="text-3xl font-bold text-gray-800 mt-4">Hasil Prediksi AI</h2>
@@ -311,102 +397,66 @@ const CSSimulation = () => {
             </div>
         );
     };
-    
-            
-    const SimulationHistory = ({ history, onExport }: {
-        history: HistoryItem[];
-        onExport: () => void;
-    }) => {
-        if (history.length === 0) return null;
-        return (
-            <div className="mt-12 bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
-                    <h3 className="text-xl font-bold text-gray-800">Riwayat Simulasi</h3>
-                    <button onClick={onExport} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg text-sm transition-colors shadow-md">
-                        <FileDown className="w-4 h-4" />
-                        Ekspor ke Excel
-                    </button>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left text-gray-600">
-                        <thead className="text-xs text-gray-700 uppercase bg-gray-100">
-                            <tr>
-                                <th className="px-6 py-3">Customer ID</th>
-                                <th className="px-6 py-3">Mode</th>
-                                <th className="px-6 py-3">Status Dihubungi</th>
-                                <th className="px-6 py-3">Pertanyaan CS</th>
-                                <th className="px-6 py-3">Jawaban Pelanggan</th>
-                                <th className="px-6 py-3">Status</th>
-                                <th className="px-6 py-3">Jenis Promo</th>
-                                <th className="px-6 py-3">Estimasi Pembayaran</th>
-                                <th className="px-6 py-3">Alasan</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {history.map((item, index) => (
-                                <tr key={index} className="bg-white border-b hover:bg-gray-50">
-                                    <td className="px-6 py-4">{item.result.customer_id || '-'}</td>
-                                    <td className="px-6 py-4">{item.result.mode || '-'}</td>
-                                    <td className="px-6 py-4">{item.result.status_dihubungi || '-'}</td>
-                                    <td className="px-6 py-4">{item.result.pertanyaan_cs || '-'}</td>
-                                    <td className="px-6 py-4">{item.result.jawaban_pelanggan || '-'}</td>
-                                    <td className="px-6 py-4">{item.result.status || '-'}</td>
-                                    <td className="px-6 py-4">{item.result.jenis_promo || '-'}</td>
-                                    <td className="px-6 py-4">{item.result.estimasi_pembayaran || '-'}</td>
-                                    <td className="px-6 py-4">{item.result.alasan || '-'}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        );
-    };
+
+
+// Komponen SimulationHistory dihapus, gunakan import dari components/SimulationHistory
 
     // --- APP COMPONENT ---
 
-    const handleStart = async () => {
-        setIsGenerating(true);
-        setResult(null);
-        setConversation([]);
-        setIsStatusStep(true);
+
+
+    const handleStatusDihubungi = async (status: string) => {
+        setLoading(true);
+        const customer_id = sessionStorage.getItem('customer_id') || "";
+        const token = sessionStorage.getItem('token');
         try {
-            const response = await fetch(`${API_BASE_URL}/conversation/status-dihubungi-options`);
+            // Kirim status ke backend
+            await fetch(`${API_BASE_URL}/conversation/update-status-dihubungi`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({ customer_id, status }),
+            });
+            setStatusDihubungi(status);
+            // Setelah status dihubungi, mulai chat AI dengan ucapan pembuka
+            const user_email = sessionStorage.getItem('user_email') || '';
+            const response = await fetch(`${API_BASE_URL}/conversation/generate-simulation-questions`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {})
+                },
+                body: JSON.stringify({ customer_id, topic, conversation: [], user: user_email }),
+            });
             if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
-            // setStatusDihubungiOptions(Array.isArray(data.options) ? data.options : []);
-            // No need to set statusDihubungiOptions, just use data.options directly.
-            setCurrentQuestion({ q: data.question, options: Array.isArray(data.options) ? data.options : [] });
+            if (data.question) {
+                setCurrentQuestion({ q: data.question, options: data.options || [], is_closing: data.is_closing });
+            }
         } catch (error) {
-            console.error("Failed to fetch status dihubungi options:", error);
-            alert("Gagal mengambil opsi status dihubungi dari server. Silakan coba lagi.");
-            setCurrentQuestion(null);
+            alert("Gagal mengirim status dihubungi atau memulai chat AI.");
         } finally {
-            setIsGenerating(false);
+            setLoading(false);
         }
     };
-
 
     const handleAnswer = async (answer: string) => {
         setLoading(true);
         let newConversation;
-        let status = "";
         const customer_id = sessionStorage.getItem('customer_id') || "";
         const token = sessionStorage.getItem('token');
-
-        if (isStatusStep) {
-        setIsStatusStep(false);
-        let statusQ = answer.trim();
-        if (statusQ === "Bisa Dihubungi" || statusQ === "Tidak Dapat Dihubungi") {
-            // OK
+        // Jawaban untuk pertanyaan AI saja
+        if (
+            currentQuestion?.q &&
+            !(conversation.length > 0 && conversation[conversation.length - 1].q === currentQuestion.q && conversation[conversation.length - 1].a === answer)
+        ) {
+            newConversation = [...conversation, { q: currentQuestion.q, a: answer }];
+            setConversation(newConversation);
         } else {
-            if (statusQ.toLowerCase().includes("bisa")) statusQ = "Bisa Dihubungi";
-            else if (statusQ.toLowerCase().includes("tidak")) statusQ = "Tidak Dapat Dihubungi";
+            newConversation = [...conversation];
         }
-        newConversation = [...conversation, { q: currentQuestion?.q || "Status dihubungi?", a: statusQ }];
-        setConversation(newConversation);
-        status = statusQ;
-
         try {
             // Simpan percakapan ke backend
             const saveRes = await fetch(`${API_BASE_URL}/conversation/next-question`, {
@@ -421,165 +471,175 @@ const CSSimulation = () => {
             const saveData = await saveRes.json();
             if (!saveData.success) throw new Error(saveData.error || 'Gagal menyimpan percakapan');
 
-            // Generate pertanyaan berikutnya (bisa alasan, prediksi, atau pertanyaan lain)
+            // Generate pertanyaan berikutnya
             const response = await fetch(`${API_BASE_URL}/conversation/generate-simulation-questions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     ...(token ? { Authorization: `Bearer ${token}` } : {})
                 },
-                body: JSON.stringify({ customer_id, topic, conversation: newConversation, status }),
+                body: JSON.stringify({ customer_id, topic, conversation: newConversation }),
             });
             if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
             if (data.is_last) {
                 // Prediction hanya jika is_last
-                const prediction = data.prediction;
-                setResult(prediction);
-                const historyItem: HistoryItem = {
-                    date: new Date().toLocaleString('id-ID'),
-                    topic: topic,
-                    result: prediction
-                };
-                setSimulationHistory(prev => [historyItem, ...prev]);
-                setCurrentQuestion(null);
-            } else if (data.question) {
-                setCurrentQuestion({ q: data.question, options: data.options || [] });
-            } else {
-                setCurrentQuestion(null);
-            }
-        } catch (error) {
-            console.error("Gagal menyimpan percakapan atau mendapatkan pertanyaan berikutnya:", error);
-            alert("Gagal menyimpan percakapan atau mendapatkan pertanyaan berikutnya dari server.");
-        } finally {
-            setLoading(false);
-        }
-        return;
-        } else {
-            // Jawaban untuk pertanyaan selain status
-            if (
-                currentQuestion?.q &&
-                currentQuestion.q !== "Status dihubungi?" &&
-                !(conversation.length > 0 && conversation[conversation.length-1].q === currentQuestion.q && conversation[conversation.length-1].a === answer)
-            ) {
-                newConversation = [...conversation, { q: currentQuestion.q, a: answer }];
-                setConversation(newConversation);
-            } else {
-                newConversation = [...conversation];
-            }
-            status = newConversation.find(c => c.q && c.q.toLowerCase().includes('status dihubungi'))?.a || "";
-
-            try {
-                // 1. Simpan percakapan ke backend (hanya simpan, tidak prediksi)
-                const saveRes = await fetch(`${API_BASE_URL}/conversation/next-question`, {
+                const predictRes = await fetch(`${API_BASE_URL}/conversation/predict`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         ...(token ? { Authorization: `Bearer ${token}` } : {})
                     },
-                    body: JSON.stringify({ customer_id, topic, conversation: newConversation }),
+                    body: JSON.stringify({
+                        customer_id,
+                        topic,
+                        conversation: newConversation,
+                    }),
                 });
-                if (!saveRes.ok) throw new Error('Gagal menyimpan percakapan');
-                const saveData = await saveRes.json();
-                if (!saveData.success) throw new Error(saveData.error || 'Gagal menyimpan percakapan');
+                let prediction = data.prediction;
+                if (predictRes.ok) {
+                    const predictData = await predictRes.json();
+                    if (predictData && predictData.result) {
+                        prediction = predictData.result;
+                    }
+                }
+                setResult(prediction);
+                navigate('/result', { state: { prediction, topic } });
+                // Simpan ke history (format tabel benar)
+                const now = new Date();
+                const nama = sessionStorage.getItem('customer_name') || '-';
+                const item: HistoryItem = {
+                    tanggal: now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID'),
+                    customer_id: customer_id || '-',
+                    nama,
+                    topik: topic,
+                    status: prediction.status || '-',
+                    alasan: prediction.alasan || '-',
+                    estimasi_pembayaran: topic === "telecollection" ? (prediction.estimasi_pembayaran || '-') : undefined
+                };
+                setSimulationHistory(prev => {
+                    const updated = [item, ...prev];
+                    localStorage.setItem('simulationHistory', JSON.stringify(updated));
+                    return updated;
+                });
+                setCurrentQuestion(null);
+            } else if (data.question) {
+                setCurrentQuestion({ q: data.question, options: data.options || [], is_closing: data.is_closing });
+            } else {
+                setCurrentQuestion(null);
+            }
+        } catch (error) {
+            alert("Gagal menyimpan percakapan atau mendapatkan pertanyaan berikutnya dari server.");
+        } finally {
+            setLoading(false);
+        }
+    };
 
-                // 2. Generate pertanyaan berikutnya
+    const handleReset = () => {
+        setCurrentQuestion(null);
+        setResult(null);
+        navigate('/Home');
+    };
+
+    const handleBack = async () => {
+        if (conversation.length > 0) {
+            // Hapus percakapan terakhir
+            const newConversation = conversation.slice(0, -1);
+            setConversation(newConversation);
+            
+            // Kosongkan prediksi terakhir (kalau ada)
+            setPrediction(null);
+            
+            // Generate pertanyaan sebelumnya berdasarkan conversation yang tersisa
+            try {
+                setLoading(true);
+                const customer_id = sessionStorage.getItem('customer_id') || "";
+                const token = sessionStorage.getItem('token');
+                const user_email = sessionStorage.getItem('user_email') || '';
+                
                 const response = await fetch(`${API_BASE_URL}/conversation/generate-simulation-questions`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         ...(token ? { Authorization: `Bearer ${token}` } : {})
                     },
-                    body: JSON.stringify({ customer_id, topic, conversation: newConversation, status }),
+                    body: JSON.stringify({ 
+                        customer_id, 
+                        topic, 
+                        conversation: newConversation, 
+                        user: user_email 
+                    }),
                 });
-                if (!response.ok) throw new Error('Network response was not ok');
-                const data = await response.json();
-                if (data.is_last) {
-                    // Prediction hanya jika is_last
-                    // Kirim permintaan prediksi lengkap agar field tidak kosong
-                    const predictRes = await fetch(`${API_BASE_URL}/conversation/predict`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(token ? { Authorization: `Bearer ${token}` } : {})
-                        },
-                        body: JSON.stringify({
-                            customer_id,
-                            topic,
-                            conversation: newConversation,
-                        }),
-                    });
-                    let prediction = data.prediction;
-                    if (predictRes.ok) {
-                        const predictData = await predictRes.json();
-                        if (predictData && predictData.result) {
-                            prediction = predictData.result;
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.question) {
+                        setCurrentQuestion({ 
+                            q: data.question, 
+                            options: data.options || [], 
+                            is_closing: data.is_closing 
+                        });
+                    }
+                } else {
+                    // Jika gagal mendapatkan pertanyaan, kembali ke pertanyaan awal
+                    if (newConversation.length === 0) {
+                        const initialResponse = await fetch(`${API_BASE_URL}/conversation/generate-simulation-questions`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...(token ? { Authorization: `Bearer ${token}` } : {})
+                            },
+                            body: JSON.stringify({ 
+                                customer_id, 
+                                topic, 
+                                conversation: [], 
+                                user: user_email 
+                            }),
+                        });
+                        
+                        if (initialResponse.ok) {
+                            const initialData = await initialResponse.json();
+                            if (initialData.question) {
+                                setCurrentQuestion({ 
+                                    q: initialData.question, 
+                                    options: initialData.options || [], 
+                                    is_closing: initialData.is_closing 
+                                });
+                            }
                         }
                     }
-                    setResult(prediction);
-                    const historyItem: HistoryItem = {
-                        date: new Date().toLocaleString('id-ID'),
-                        topic: topic,
-                        result: prediction
-                    };
-                    setSimulationHistory(prev => [historyItem, ...prev]);
-                    setCurrentQuestion(null);
-                } else if (data.question) {
-                    setCurrentQuestion({ q: data.question, options: data.options || [] });
-                } else {
-                    setCurrentQuestion(null);
                 }
             } catch (error) {
-                console.error("Gagal menyimpan percakapan atau mendapatkan pertanyaan berikutnya:", error);
-                alert("Gagal menyimpan percakapan atau mendapatkan pertanyaan berikutnya dari server.");
+                console.error('Error getting previous question:', error);
+                // Fallback: jika error, setidaknya bersihkan current question
+                if (newConversation.length === 0) {
+                    setCurrentQuestion(null);
+                }
             } finally {
                 setLoading(false);
             }
+        } else {
+            alert("Tidak ada pertanyaan sebelumnya.");
         }
     };
 
-    const handleReset = () => {
-    setCurrentQuestion(null);
-    setResult(null);
-    navigate('/Home');
-    };
 
-    const handleExport = () => {
-        const XLSX = (window as typeof window & { XLSX: typeof import("xlsx") }).XLSX;
-        if (!XLSX) {
-            alert("Pustaka ekspor Excel tidak ditemukan.");
-            return;
-        }
 
-        const worksheetData = simulationHistory.map(item => ({
-            Tanggal: item.date,
-            Skenario: item.topic,
-            Status: item.result.status,
-            Minat: item.result.minat,
-            'Estimasi Bayar': item.result.estimasi_pembayaran,
-            Promo: item.result.promo,
-            Alasan: item.result.alasan
-        }));
-        const worksheet = XLSX.utils.json_to_sheet(worksheetData);
-        const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, "Riwayat Simulasi");
-        XLSX.writeFile(workbook, "Riwayat_Simulasi_CS.xlsx");
-    };
 
-    
+
 
     const isSimulationRunning = currentQuestion !== null && !result;
 
     // Ambil nama dari sessionStorage
     const customerName = sessionStorage.getItem('customer_name') || '';
     const getInitials = (name: string) => {
-      if (!name) return '';
-      return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2);
+        if (!name) return '';
+        return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
     };
 
     return (
         <div className="min-h-screen bg-gray-100 font-sans">
-             <style>{`
+            <style>{`
                 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
                 body { font-family: 'Inter', sans-serif; }
                 @keyframes fade-in-down {
@@ -606,12 +666,12 @@ const CSSimulation = () => {
                         </div>
                         <div className="flex items-center gap-4">
                             {customerName && (
-                              <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-2 shadow-sm">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
-                                  {getInitials(customerName)}
+                                <div className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl px-4 py-2 shadow-sm">
+                                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-lg">
+                                        {getInitials(customerName)}
+                                    </div>
+                                    <span className="font-semibold text-gray-800 text-base">{customerName}</span>
                                 </div>
-                                <span className="font-semibold text-gray-800 text-base">{customerName}</span>
-                              </div>
                             )}
                         </div>
                     </div>
@@ -621,50 +681,274 @@ const CSSimulation = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12">
                     <aside className="lg:col-span-4 xl:col-span-3">
                         <div className="lg:sticky lg:top-28">
-                            <ScenarioControls 
+                            <ScenarioControls
                                 topic={topic}
                                 setTopic={setTopic}
                                 isGenerating={isGenerating}
                                 disabled={isSimulationRunning || isGenerating}
-                                isSimulationRunning={isSimulationRunning}
-                                onStart={handleStart}
-                                onEnd={handleReset}
                             />
                         </div>
                     </aside>
-                    <div className="lg:col-span-8 xl:col-span-9">
-                        {!isSimulationRunning && !result && !isGenerating && (
-                            <div className="flex flex-col items-center justify-center text-center p-8 bg-white rounded-2xl shadow-lg border border-gray-200 min-h-[50vh]">
-                                <div className="w-20 h-20 bg-gradient-to-br from-blue-100 to-purple-100 rounded-full flex items-center justify-center mb-4 ring-4 ring-white/50">
-                                    <Bot className="w-10 h-10 text-blue-600" />
+                    <div className="lg:col-span-8 xl:col-span-9 flex flex-col gap-8">
+                        {/* Status Dihubungi Selalu di Atas Kolom Pertanyaan AI */}
+                        <div>
+                            <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H7a2 2 0 01-2-2V7a2 2 0 012-2h4a2 2 0 012 2v1" /></svg>
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-bold text-gray-800 mb-1">Status Dihubungi</h2>
+                                        <p className="text-gray-500 text-sm">Pilih status pelanggan sebelum memulai simulasi AI.</p>
+                                    </div>
                                 </div>
-                                <h2 className="text-2xl font-bold text-gray-800">Selamat Datang di AI Assistant</h2>
-                                <p className="text-gray-500 mt-2 max-w-md">Pilih skenario dan klik "Mulai Simulasi" untuk memulai.</p>
+                                <div className="flex gap-4 mt-6">
+                                    <button
+                                        onClick={() => handleStatusDihubungi("Dihubungi")}
+                                        disabled={loading || statusDihubungi === "Dihubungi"}
+                                        className={`px-6 py-3 rounded-lg font-semibold shadow transition-all duration-150 ${
+                                            statusDihubungi === "Dihubungi"
+                                                ? "bg-green-600 text-white"
+                                                : "bg-gray-100 hover:bg-green-50 text-gray-700"
+                                        }`}
+                                    >
+                                        Dihubungi
+                                    </button>
+
+                                    <button
+                                        onClick={() => {
+                                            setShowAlasanTidakDihubungi(true);
+                                            setStatusDihubungi("Tidak Dihubungi");
+                                            setCurrentQuestion(null); // Hilangkan kolom pertanyaan AI
+                                        }}
+                                        disabled={loading || statusDihubungi === "Tidak Dihubungi"}
+                                        className={`px-6 py-3 rounded-lg font-semibold shadow transition-all duration-150 ${
+                                            statusDihubungi === "Tidak Dihubungi"
+                                                ? "bg-red-600 text-white"
+                                                : "bg-gray-100 hover:bg-red-50 text-gray-700"
+                                        }`}
+                                    >
+                                        Tidak Dihubungi
+                                    </button>
+                                </div>
                             </div>
+                            {showAlasanTidakDihubungi && (
+                                <div className="mt-4">
+                                    <p className="font-semibold mb-2">Pilih alasan tidak dapat dihubungi:</p>
+                                    {alasanOptions.map((alasan) => (
+                                        <label key={alasan} className="block mb-2">
+                                            <input
+                                                type="radio"
+                                                name="alasan"
+                                                value={alasan}
+                                                checked={selectedAlasan === alasan}
+                                                onChange={() => setSelectedAlasan(alasan)}
+                                            />
+                                            <span className="ml-2">{alasan}</span>
+                                        </label>
+                                    ))}
+                                    <button
+                                        className="mt-2 px-4 py-2 bg-blue-600 text-white rounded"
+                                        disabled={!selectedAlasan}
+                                        onClick={() => {
+                                            // Simpan ke history (format tabel benar) untuk Tidak Dapat Dihubungi
+                                            const customer_id = sessionStorage.getItem('customer_id') || '-';
+                                            const nama = sessionStorage.getItem('customer_name') || '-';
+                                            const now = new Date();
+                                            const item: HistoryItem = {
+                                                tanggal: now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID'),
+                                                customer_id,
+                                                nama,
+                                                topik: topic,
+                                                status: `Tidak Dihubungi`,
+                                                alasan: selectedAlasan ?? "-",
+                                                estimasi_pembayaran: topic === "telecollection" ? "-" : undefined
+                                            };
+                                            setSimulationHistory(prev => {
+                                                const updated = [item, ...prev];
+                                                localStorage.setItem('simulationHistory', JSON.stringify(updated));
+                                                return updated;
+                                            });
+                                            handleStatusDihubungi(`Tidak Dihubungi: ${selectedAlasan}`);
+                                            setShowAlasanTidakDihubungi(false);
+                                            navigate('/customer-reason', {
+                                                state: {
+                                                    customerName,
+                                                    customerId: customer_id,
+                                                    topic,
+                                                    alasan: selectedAlasan
+                                                }
+                                            });
+                                            setSelectedAlasan(null);
+                                        }}
+                                    >
+                                        Konfirmasi Alasan
+                                    </button>
+                                    {/* Tambahkan tombol batal di sini */}
+                                    <button
+                                        className="mt-2 ml-2 px-4 py-2 bg-gray-300 text-gray-700 rounded"
+                                        onClick={() => {
+                                            setShowAlasanTidakDihubungi(false);
+                                            setSelectedAlasan(null);
+                                        }}
+                                    >
+                                        Batal
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                        {/* Halaman CustomerReasonPage sekarang diakses via route, tidak perlu render di sini */}
+                        {/* Tampilkan kolom pertanyaan AI hanya jika status dihubungi (bukan tidak dihubungi) */}
+                        {statusDihubungi && statusDihubungi === 'Dihubungi' && currentQuestion && (
+                            <>
+                                <QuestionBox
+                                    question={currentQuestion.q}
+                                    options={currentQuestion.options}
+                                    loading={loading}
+                                    isClosing={!!currentQuestion.is_closing}
+                                    onAnswer={(answer, closing) => {
+                                        if (closing) {
+                                            fetchPrediction(); // langsung ke halaman hasil prediksi
+                                        } else {
+                                            handleAnswer(answer);
+                                        }
+                                    }}
+                                />
+                                {/* Tombol Navigasi Pertanyaan AI */}
+                                <div className="mt-4 flex justify-between items-center">
+                                    <button
+                                        className="px-4 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600 transition-all"
+                                        onClick={handleBack}
+                                        disabled={loading || conversation.length === 0}
+                                    >
+                                        ← Back
+                                    </button>
+                                    <button
+                                        className="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-all"
+                                        onClick={() => {
+                                            setStatusDihubungi(null);
+                                            setCurrentQuestion(null);
+                                            setConversation([]);
+                                        }}
+                                        disabled={loading}
+                                    >
+                                        Batal
+                                    </button>
+                                </div>
+                            </>
                         )}
-                        {isGenerating && (
-                            <div className="flex flex-col items-center justify-center text-center p-8 bg-white rounded-2xl shadow-lg border border-gray-200 min-h-[50vh]">
-                                <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
-                                <p className="text-gray-600 mt-4">Mempersiapkan skenario AI, mohon tunggu...</p>
-                            </div>
-                        )}
-                        {isSimulationRunning && currentQuestion && (
-                            <AnswerInput 
-                                question={currentQuestion.q}
-                                options={currentQuestion.options}
-                                onAnswer={handleAnswer}
-                                loading={loading}
-                            />
-                        )}
-                        {result && (
-                            <PredictionResult result={result} topic={topic} onReset={handleReset} />
-                        )}
-                        <SimulationHistory history={simulationHistory} onExport={handleExport} />
+                        {/* <SimulationHistory history={simulationHistory} /> */}
                     </div>
                 </div>
             </main>
+
+
         </div>
     );
 };
 
+
 export default CSSimulation;
+// QuestionBox dipindahkan menjadi export biasa, tanpa export default kedua
+
+interface QuestionBoxProps {
+    question: string;
+    options?: string[];
+    loading: boolean;
+    isClosing: boolean;
+    onAnswer: (answer: string, closing: boolean) => void;
+}
+
+export function QuestionBox({
+    question,
+    options = [],
+    loading,
+    isClosing,
+    onAnswer,
+}: QuestionBoxProps) {
+    // Jika closing, hanya tampilkan kalimat penutup dan tombol Selesai
+    if (isClosing) {
+        return (
+            <div className="w-full bg-white/80 backdrop-blur-lg p-6 rounded-2xl shadow-xl border border-gray-200 space-y-5 flex flex-col items-center">
+                <p className="text-xl font-semibold text-gray-800 mb-6" style={{ fontFamily: 'Times New Roman, Times, serif', whiteSpace: 'pre-line', lineHeight: '1.6', textAlign: 'center' }}>{question}</p>
+                <button
+                    className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg text-lg transition-all hover:bg-blue-700"
+                    onClick={() => onAnswer("Selesai", true)}
+                    disabled={loading}
+                >
+                    Selesai
+                </button>
+            </div>
+        );
+    }
+
+    const [manualAnswer, setManualAnswer] = useState("");
+    let limitedOptions: string[] = [];
+    if (Array.isArray(options) && options.length > 0) {
+        limitedOptions = options.slice(0, 4);
+    }
+    const handleManualSubmit = () => {
+        if (manualAnswer.trim()) {
+            onAnswer(manualAnswer, false);
+            setManualAnswer("");
+        }
+    };
+    return (
+        <div className="w-full bg-white/80 backdrop-blur-lg p-6 rounded-2xl shadow-xl border border-gray-200 space-y-5">
+            <div>
+                <p className="text-sm font-semibold text-blue-700 mb-2">Pertanyaan AI:</p>
+                <p
+                    className="text-xl font-semibold text-gray-800"
+                    style={{
+                        fontFamily: 'Times New Roman, Times, serif',
+                        whiteSpace: 'pre-line',
+                        lineHeight: '1.6',
+                        marginBottom: '12px',
+                        textAlign: 'justify',
+                        background: '#f8f8f8',
+                        borderRadius: '8px',
+                        padding: '16px',
+                        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+                    }}
+                >
+                    {question}
+                </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {limitedOptions.map((opt, i) => (
+                    <button
+                        key={i}
+                        onClick={() => onAnswer(opt, false)}
+                        disabled={loading}
+                        className="text-left p-4 bg-white hover:bg-blue-50 border border-gray-300 rounded-lg transition-all duration-200 disabled:opacity-50 hover:border-blue-400 hover:shadow-md font-medium text-gray-700"
+                    >
+                        {opt}
+                    </button>
+                ))}
+            </div>
+            <div className="relative flex items-center">
+                <hr className="w-full border-gray-300" />
+                <span className="absolute left-1/2 -translate-x-1/2 bg-white/80 px-2 text-sm text-gray-500 font-medium">ATAU</span>
+            </div>
+            <div className="space-y-3">
+                <textarea
+                    className="w-full p-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow"
+                    rows={3}
+                    placeholder="Ketik jawaban manual di sini..."
+                    value={manualAnswer}
+                    onChange={(e) => setManualAnswer(e.target.value)}
+                    disabled={loading}
+                />
+
+                <button
+                    onClick={handleManualSubmit}
+                    disabled={loading || !manualAnswer.trim()}
+                    className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all disabled:bg-gray-400"
+                >
+                    {loading ? 'Memproses...' : 'Lanjutkan'}
+                </button>
+            </div>
+        </div>
+    );
+}
+

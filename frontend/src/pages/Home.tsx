@@ -11,7 +11,7 @@ const LoginPage = ({ onLoginSuccess }: { onLoginSuccess: (customer_Id: string) =
     const [alert, setAlert] = useState<{ type: 'success' | 'error', title: string, message: string } | null>(null);
     const navigate = useNavigate();
 
-        const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+        const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1/endpoints";
         const token = sessionStorage.getItem('token');
 
         const handleCheckId = async (e: React.FormEvent) => {
@@ -33,6 +33,27 @@ const LoginPage = ({ onLoginSuccess }: { onLoginSuccess: (customer_Id: string) =
                     // Simpan customer_Id dan nama ke sessionStorage
                     sessionStorage.setItem('customer_id', customer_Id);
                     sessionStorage.setItem('customer_name', data.name || '');
+                    // Tambahkan ke simulationHistory jika belum ada
+                    const now = new Date();
+                    const tanggal = now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID');
+                    const newEntry = {
+                        tanggal,
+                        customer_id: customer_Id,
+                        nama: data.name || '-',
+                        topik: '-',
+                        status: '-',
+                        alasan: '-'
+                    };
+                    let history = [];
+                    try {
+                        history = JSON.parse(localStorage.getItem('simulationHistory') || '[]');
+                    } catch {}
+                    // Cek duplikat berdasarkan customer_id dan tanggal
+                    const isDuplicate = history.some((item: any) => item.customer_id === customer_Id && item.tanggal === tanggal);
+                    if (!isDuplicate) {
+                        history = [newEntry, ...history];
+                        localStorage.setItem('simulationHistory', JSON.stringify(history));
+                    }
                     onLoginSuccess(customer_Id);
                     navigate("/Dashboard");
                 } else {
@@ -44,13 +65,46 @@ const LoginPage = ({ onLoginSuccess }: { onLoginSuccess: (customer_Id: string) =
             setLoading(false);
         };
 
+
+        // Fungsi untuk logout total (keluar aplikasi)
         const handleLogout = () => {
             sessionStorage.clear();
             navigate('/');
         };
 
+        // Fungsi untuk ganti ID saja (reset session dan form, tanpa redirect)
+        const handleChangeId = () => {
+            sessionStorage.removeItem('customer_id');
+            sessionStorage.removeItem('customer_name');
+            setCustomer_Id('');
+            // Jika ingin reset token juga, tambahkan baris berikut:
+            // sessionStorage.removeItem('token');
+        };
+
+    // Selalu tampilkan form input ID pelanggan, dan jika sudah login tampilkan info serta tombol ganti ID
+    const isLoggedIn = !!sessionStorage.getItem('customer_id');
     return (
         <div className="min-h-screen w-full bg-gray-100 flex flex-col items-center justify-center p-4 font-sans">
+            <div className="absolute top-6 right-8 z-10">
+                <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow transition-all"
+                    title="Logout"
+                >
+                    <LogOut className="w-5 h-5" />
+                    <span className="hidden sm:inline">Logout</span>
+                </button>
+            </div>
+            <div className="absolute top-6 left-8 z-10">
+                <button
+                    onClick={() => navigate('/menu-riwayat-simulasi')}
+                    className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-700 text-white font-semibold rounded-xl shadow transition-all"
+                    title="Riwayat Simulasi"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V7M16 3v4M8 3v4m-5 4h18" /></svg>
+                    <span className="hidden sm:inline">Riwayat Simulasi</span>
+                </button>
+            </div>
             <div className="w-full max-w-md">
                 <div className="text-center mb-8">
                     <h1 className="text-3xl font-bold text-gray-800">ICONNET AI Assistant</h1>
@@ -65,6 +119,15 @@ const LoginPage = ({ onLoginSuccess }: { onLoginSuccess: (customer_Id: string) =
                         message={alert.message}
                         onClose={() => setAlert(null)}
                       />
+                    )}
+                    {isLoggedIn && (
+                        <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-green-700 flex items-center justify-between">
+                            <span>Login sebagai <b>{sessionStorage.getItem('customer_id')}</b></span>
+                            <button
+                                onClick={handleChangeId}
+                                className="ml-4 px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-semibold"
+                            >Ganti ID</button>
+                        </div>
                     )}
                     <form onSubmit={handleCheckId} className="space-y-6">
                         <div>
@@ -96,22 +159,18 @@ const LoginPage = ({ onLoginSuccess }: { onLoginSuccess: (customer_Id: string) =
                                     <span>Memeriksa...</span>
                                 </>
                             ) : (
-                                'Masuk Simulasi'
+                                isLoggedIn ? 'Ganti ID & Masuk Simulasi' : 'Masuk Simulasi'
                             )}
                         </button>
                     </form>
+                    {isLoggedIn && (
+                        <button
+                            onClick={() => navigate('/Dashboard')}
+                            className="mt-6 w-full px-6 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                        >Ke Dashboard</button>
+                    )}
                 </div>
             </div>
-                <div className="absolute top-6 right-8 z-10">
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow transition-all"
-                        title="Logout"
-                    >
-                        <LogOut className="w-5 h-5" />
-                        <span className="hidden sm:inline">Logout</span>
-                    </button>
-                </div>
         </div>
     );
 };

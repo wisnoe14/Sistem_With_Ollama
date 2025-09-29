@@ -1,10 +1,15 @@
-
 import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import PageTransition from "./components/PageTransition";
 import CSSimulation from "./pages/CSSimulation";
+
+import CustomerSimulationHistoryMenu from "./pages/CustomerSimulationHistoryMenu";
+import ResultPage from "./pages/ResultPage";
 import Home from "./pages/Home";
 import LoginPage from "./pages/Login";
+import QnAFlow from "./components/QnAFlow";
+import CustomerReasonPage from "./pages/CustomerReasonPage";
+import DetailDataPelanggan from "./pages/DetailDataPelanggan";
 import type { ReactNode } from "react";
 
 
@@ -49,6 +54,8 @@ const NotFound = () => (
  */
 export default function App() {
   const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const [showChat, setShowChat] = useState(false);
 
   // Fungsi untuk delay dan set loading
   const handlePageChange = async (callback: () => void) => {
@@ -86,6 +93,18 @@ export default function App() {
     }
     return <>{children}</>;
   }
+
+  const handleStatus = async (value: string) => {
+    const customer_id = sessionStorage.getItem('customer_id');
+    await fetch('http://localhost:8000/api/v1/endpoints/conversation/update-status-dihubungi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ customer_id, status: value }),
+    });
+    setStatus(value);
+    setShowChat(true);
+  };
+
   return (
     <BrowserRouter>
       <PageTransition show={loading} />
@@ -105,8 +124,14 @@ export default function App() {
             </RequireCustomerId>
           </RequireAuth>
         } />
+  <Route path="/result" element={<ResultPage />} />
+
+  <Route path="/menu-riwayat-simulasi" element={<CustomerSimulationHistoryMenu />} />
+        <Route path="/customer-reason" element={<CustomerReasonPage />} />
+        <Route path="/detail-pelanggan" element={<DetailDataPelanggan />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
+      {/* QnAFlow logic restored */}
     </BrowserRouter>
   );
 }

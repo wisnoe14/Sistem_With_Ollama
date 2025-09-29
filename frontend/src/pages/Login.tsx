@@ -29,6 +29,7 @@ const AuthPage = ({ onLoginSuccess }: { onLoginSuccess: (user: { email: string; 
             if (res.ok && data.access_token) {
                 // Simpan token JWT ke sessionStorage
                 sessionStorage.setItem('token', data.access_token);
+                sessionStorage.setItem('user_email', email); // Save user_email to sessionStorage
                 onLoginSuccess({ email, name: data.name });
                 navigate('/Home');
             } else {
