@@ -1,4 +1,3 @@
-
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -14,10 +13,34 @@ const ResultPage: React.FC = () => {
   const prediction = location.state?.prediction;
   const topic = location.state?.topic;
 
+  // 🔧 DEBUG: Log prediction data untuk troubleshooting
+  console.log('[ResultPage] Received prediction data:', prediction);
+  console.log('[ResultPage] Topic:', topic);
+  console.log('[ResultPage] Location state:', location.state);
+
   // Ambil data pelanggan dari sessionStorage jika prediction tidak ada
   const customer_id = prediction?.customer_id || sessionStorage.getItem('customer_id') || '-';
   const customer_name = sessionStorage.getItem('customer_name') || '-';
   const status_dihubungi = prediction?.status_dihubungi || sessionStorage.getItem('status_dihubungi') || '-';
+
+  // Helper function untuk menentukan warna berdasarkan topic dan nilai
+  const getStatusColor = (field: string, value: string) => {
+    if (topic === 'winback') {
+      if (field === 'keputusan') {
+        if (value?.includes('BERHASIL')) return 'bg-green-50 border-green-100 text-green-900';
+        if (value?.includes('TERTARIK')) return 'bg-blue-50 border-blue-100 text-blue-900';
+        if (value?.includes('KEMUNGKINAN')) return 'bg-yellow-50 border-yellow-100 text-yellow-900';
+        if (value?.includes('TIDAK TERTARIK')) return 'bg-red-50 border-red-100 text-red-900';
+        if (value?.includes('FOLLOW-UP')) return 'bg-orange-50 border-orange-100 text-orange-900';
+      }
+      if (field === 'confidence') {
+        if (value === 'TINGGI') return 'bg-green-50 border-green-100 text-green-900';
+        if (value === 'SEDANG') return 'bg-yellow-50 border-yellow-100 text-yellow-900';
+        if (value === 'RENDAH') return 'bg-red-50 border-red-100 text-red-900';
+      }
+    }
+    return 'bg-gray-50 border-gray-100 text-gray-900';
+  };
 
   if (!prediction) {
     return (
@@ -78,33 +101,134 @@ const ResultPage: React.FC = () => {
           </div>
           <div className="bg-blue-50 rounded-xl p-5 flex flex-col gap-1 border border-blue-100">
             <span className="text-xs text-gray-500 font-medium">Customer ID</span>
-            <span className="text-lg font-bold text-blue-900">{prediction.customer_id || '-'}</span>
+            <span className="text-lg font-bold text-blue-900">{prediction.customer_id || customer_id}</span>
           </div>
           <div className="bg-purple-50 rounded-xl p-5 flex flex-col gap-1 border border-purple-100">
             <span className="text-xs text-gray-500 font-medium">Status Dihubungi</span>
-            <span className="text-lg font-bold text-purple-900">{prediction.status_dihubungi || '-'}</span>
+            <span className="text-lg font-bold text-purple-900">{prediction.status_dihubungi || status_dihubungi}</span>
           </div>
-          <div className="bg-green-50 rounded-xl p-5 flex flex-col gap-1 border border-green-100">
-            <span className="text-xs text-gray-500 font-medium">Status</span>
-            <span className="text-lg font-bold text-green-900">{prediction.status || '-'}</span>
-          </div>
-          <div className="bg-yellow-50 rounded-xl p-5 flex flex-col gap-1 border border-yellow-100">
-            <span className="text-xs text-gray-500 font-medium">Jenis Promo</span>
-            <span className="text-lg font-bold text-yellow-900">{prediction.jenis_promo || '-'}</span>
-          </div>
-          <div className="bg-pink-50 rounded-xl p-5 flex flex-col gap-1 border border-pink-100">
-            <span className="text-xs text-gray-500 font-medium">Estimasi Pembayaran</span>
-            <span className="text-lg font-bold text-pink-900">{prediction.estimasi_pembayaran || '-'}</span>
-          </div>
-          <div className="bg-red-50 rounded-xl p-5 flex flex-col gap-1 border border-red-100 md:col-span-2">
-            <span className="text-xs text-gray-500 font-medium">Alasan</span>
-            <span className="text-lg font-bold text-red-900">{prediction.alasan || '-'}</span>
-          </div>
-          {prediction.minat_berlangganan && (
-            <div className="bg-indigo-50 rounded-xl p-5 flex flex-col gap-1 border border-indigo-100 md:col-span-2">
-              <span className="text-xs text-gray-500 font-medium">Minat Berlangganan</span>
-              <span className="text-lg font-bold text-indigo-900">{prediction.minat_berlangganan}</span>
+          
+          {/* Risk Indicator - NEW */}
+          {prediction.risk_level && (
+            <div className="bg-white rounded-xl p-5 flex flex-col gap-1 border border-gray-200">
+              <span className="text-xs text-gray-500 font-medium">Indikator Risiko</span>
+              <span
+                className="inline-flex items-center justify-center px-3 py-2 rounded-lg text-sm font-bold shadow-sm"
+                style={{ backgroundColor: prediction.risk_color || '#16a34a', color: '#fff' }}
+                title={`Risk Level: ${prediction.risk_level || 'low'}`}
+              >
+                {prediction.risk_label || 'Aman'}
+              </span>
             </div>
+          )}
+          
+          {/* Winback-specific fields */}
+          {topic === 'winback' ? (
+            <>
+              <div className={`rounded-xl p-5 flex flex-col gap-1 border ${getStatusColor('keputusan', prediction.keputusan)}`}>
+                <span className="text-xs text-gray-500 font-medium">Keputusan</span>
+                <span className="text-lg font-bold">{prediction.keputusan || prediction.status || '-'}</span>
+              </div>
+              <div className={`rounded-xl p-5 flex flex-col gap-1 border ${getStatusColor('confidence', prediction.confidence)}`}>
+                <span className="text-xs text-gray-500 font-medium">Confidence Level</span>
+                <span className="text-lg font-bold">{prediction.confidence || '-'}</span>
+              </div>
+              <div className="bg-indigo-50 rounded-xl p-5 flex flex-col gap-1 border border-indigo-100">
+                <span className="text-xs text-gray-500 font-medium">Probability</span>
+                <span className="text-lg font-bold text-indigo-900">{prediction.probability ? `${prediction.probability}%` : (prediction.probability_score ? `${prediction.probability_score}%` : '-')}</span>
+              </div>
+              <div className="bg-teal-50 rounded-xl p-5 flex flex-col gap-1 border border-teal-100">
+                <span className="text-xs text-gray-500 font-medium">Minat Berlangganan</span>
+                <span className="text-lg font-bold text-teal-900">{prediction.minat_berlangganan || '-'}</span>
+              </div>
+              <div className="bg-yellow-50 rounded-xl p-5 flex flex-col gap-1 border border-yellow-100">
+                <span className="text-xs text-gray-500 font-medium">Jenis Promo</span>
+                <span className="text-lg font-bold text-yellow-900">{prediction.jenis_promo || '-'}</span>
+              </div>
+              <div className="bg-pink-50 rounded-xl p-5 flex flex-col gap-1 border border-pink-100">
+                <span className="text-xs text-gray-500 font-medium">Target Aktivasi</span>
+                <span className="text-lg font-bold text-pink-900">{prediction.estimasi_pembayaran || '-'}</span>
+              </div>
+              {prediction.equipment_status && (
+                <div className="bg-blue-50 rounded-xl p-5 flex flex-col gap-1 border border-blue-100">
+                  <span className="text-xs text-gray-500 font-medium">Status Perangkat</span>
+                  <span className="text-lg font-bold text-blue-900">{prediction.equipment_status}</span>
+                </div>
+              )}
+              {prediction.service_issues && (
+                <div className="bg-orange-50 rounded-xl p-5 flex flex-col gap-1 border border-orange-100">
+                  <span className="text-xs text-gray-500 font-medium">Riwayat Layanan</span>
+                  <span className="text-lg font-bold text-orange-900">{prediction.service_issues}</span>
+                </div>
+              )}
+              <div className="bg-cyan-50 rounded-xl p-5 flex flex-col gap-1 border border-cyan-100">
+                <span className="text-xs text-gray-500 font-medium">Tanggal Prediksi</span>
+                <span className="text-lg font-bold text-cyan-900">{prediction.tanggal_prediksi || '-'}</span>
+              </div>
+              <div className="bg-red-50 rounded-xl p-5 flex flex-col gap-1 border border-red-100 md:col-span-2">
+                <span className="text-xs text-gray-500 font-medium">Alasan</span>
+                <span className="text-lg font-bold text-red-900">{prediction.alasan || '-'}</span>
+              </div>
+              {prediction.detail_analysis && (
+                <div className="bg-purple-50 rounded-xl p-5 flex flex-col gap-2 border border-purple-100 md:col-span-2">
+                  <span className="text-xs text-gray-500 font-medium">Detail Analysis</span>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <span className="text-purple-600">Interest Score:</span>
+                      <span className="text-purple-900 font-bold ml-1">{prediction.detail_analysis.interest_score?.toFixed(1) || '0'}%</span>
+                    </div>
+                    <div>
+                      <span className="text-purple-600">Commitment:</span>
+                      <span className="text-purple-900 font-bold ml-1">{prediction.detail_analysis.commitment_score?.toFixed(1) || '0'}%</span>
+                    </div>
+                    <div>
+                      <span className="text-purple-600">Cooperation:</span>
+                      <span className="text-purple-900 font-bold ml-1">{prediction.detail_analysis.cooperation_rate?.toFixed(1) || '0'}%</span>
+                    </div>
+                    <div>
+                      <span className="text-purple-600">Objections:</span>
+                      <span className="text-purple-900 font-bold ml-1">{prediction.detail_analysis.objection_count || '0'}</span>
+                    </div>
+                    {prediction.detail_analysis.price_sensitivity !== undefined && (
+                      <div>
+                        <span className="text-purple-600">Price Sensitivity:</span>
+                        <span className="text-purple-900 font-bold ml-1">{prediction.detail_analysis.price_sensitivity?.toFixed(1) || '0'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            /* Telecollection fields */
+            <>
+              <div className="bg-green-50 rounded-xl p-5 flex flex-col gap-1 border border-green-100">
+                <span className="text-xs text-gray-500 font-medium">Status</span>
+                <span className="text-lg font-bold text-green-900">{prediction.status || prediction.keputusan || '-'}</span>
+              </div>
+              <div className="bg-yellow-50 rounded-xl p-5 flex flex-col gap-1 border border-yellow-100">
+                <span className="text-xs text-gray-500 font-medium">Jenis Promo</span>
+                <span className="text-lg font-bold text-yellow-900">{prediction.jenis_promo || '-'}</span>
+              </div>
+              <div className="bg-pink-50 rounded-xl p-5 flex flex-col gap-1 border border-pink-100">
+                <span className="text-xs text-gray-500 font-medium">Estimasi Pembayaran</span>
+                <span className="text-lg font-bold text-pink-900">
+                  {(prediction.status === 'SUDAH BAYAR' || prediction.keputusan === 'SUDAH BAYAR') 
+                    ? '-' 
+                    : (prediction.estimasi_pembayaran || '-')}
+                </span>
+              </div>
+              <div className="bg-red-50 rounded-xl p-5 flex flex-col gap-1 border border-red-100 md:col-span-2">
+                <span className="text-xs text-gray-500 font-medium">Alasan</span>
+                <span className="text-lg font-bold text-red-900">{prediction.alasan || '-'}</span>
+              </div>
+              {prediction.minat_berlangganan && (
+                <div className="bg-indigo-50 rounded-xl p-5 flex flex-col gap-1 border border-indigo-100 md:col-span-2">
+                  <span className="text-xs text-gray-500 font-medium">Minat Berlangganan</span>
+                  <span className="text-lg font-bold text-indigo-900">{prediction.minat_berlangganan}</span>
+                </div>
+              )}
+            </>
           )}
         </div>
         <div className="flex flex-col gap-4 mt-4">

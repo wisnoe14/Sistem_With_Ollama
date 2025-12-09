@@ -4,6 +4,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os
 import json
+from datetime import datetime
 from typing import Optional, Union, List, Dict
 from sqlalchemy.orm import Session
 from app.database.database import get_db
@@ -11,15 +12,47 @@ from app.model.users import User
 from app.model.customer import Customer
 
 from app.services.gpt_service import (
-    generate_question,
-    save_conversation_to_excel,
     predict_status_promo_ollama,
     predict_status_promo_svm,
     predict_status_promo_lda,
-    predict_telecollection_status,
-    get_current_date_info,
-    parse_relative_date
+    generate_final_prediction,
 )
+
+# Dataset and goal utilities (decoupled re-exports)
+from app.services.dataset_utils import (
+    get_question_from_dataset,
+    CS_DATASET,
+    CONVERSATION_GOALS,
+)
+from app.services.goal_utils import (
+    generate_automatic_customer_answer,
+    check_conversation_goals_completed,
+)
+
+# Shared utilities (date/time parsing, excel logging, ollama stats)
+from app.services.shared_utils import (
+    save_conversation_to_excel,
+    get_current_date_info,
+    parse_relative_date,
+    get_ollama_performance_report,
+)
+
+# New per-mode service wrappers
+from app.services import (
+    telecollection_services as tc_services,
+    winback_services as wb_services,
+    retention_services as rt_services,
+)
+
+# Helper to route question generation by topic/mode
+def _gen_question_by_topic(topic: str, conversation: list) -> dict:
+    topic_norm = (topic or "").strip().lower()
+    if topic_norm == "winback":
+        return wb_services.generate_question(conversation)
+    if topic_norm == "retention":
+        return rt_services.generate_question(conversation)
+    # default to telecollection
+    return tc_services.generate_question(conversation)
 
 router = APIRouter()
 
@@ -44,6 +77,14 @@ class NextQuestionRequest(BaseModel):
     topic: str
     conversation: list
 
+class ProcessAnswerRequest(BaseModel):
+    customer_id: str
+    topic: str
+    conversation: List[Dict]  # Existing conversation history
+    current_question: str
+    customer_answer: str  # Manual input or selected option
+    input_type: Optional[str] = "manual"  # "manual" or "selected"
+
 
 class FinalPredictRequest(BaseModel):
     customer_id: str
@@ -65,11 +106,10 @@ async def next_question(request: Request):
     prediction = body.get("prediction") or {}
     try:
         save_conversation_to_excel(
-            customer_id,
-            topic,
-            status_dihubungi,
-            conversation,
-            prediction
+            customer_id=customer_id,
+            mode=topic,
+            conversation=conversation,
+            prediction=prediction
         )
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -84,105 +124,8 @@ def get_status_dihubungi_options():
     }
 
 
-@router.post("/generate-simulation-questions")
-async def generate_simulation_questions(request: Request, db: Session = Depends(get_db)):
-    body = await request.json()
-    topic = body.get("topic")
-    conversation = body.get("conversation", [])
-    customer_id = body.get("customer_id")
-    user_email = body.get("user_email") or body.get("user")
-
-    from datetime import datetime
-    hour = datetime.now().hour
-    if hour < 11:
-        waktu = "pagi"
-    elif hour < 15:
-        waktu = "siang"
-    else:
-        waktu = "sore"
-
-    # --- Customer name ---
-    customer_name = "Pelanggan ICONNET"
-    if customer_id:
-        cust = db.query(Customer).filter(Customer.customer_id == customer_id).first()
-        if cust:
-            customer_name = cust.name
-
-    # --- CS name ---
-    cs_name = "Customer Service"
-    if user_email:
-        user_obj = db.query(User).filter(User.email == user_email).first()
-        if user_obj:
-            if user_obj.name and user_obj.name.strip():
-                cs_name = user_obj.name.strip()
-
-    # Opening
-    if not conversation or len(conversation) == 0:
-        opening_greetings = {
-            "telecollection": f"Selamat {waktu}, Perkenalkan saya {cs_name} dari ICONNET, apakah benar saya terhubung dengan {customer_name}? Mohon maaf, Apakah bapak/ibu sudah melakukan pembayaran bulanan ICONNET?",
-            "retention": f"Selamat {waktu}, saya {cs_name} dari ICONNET ingin memastikan layanan kami tetap sesuai kebutuhan {customer_name}. Apakah ada yang bisa kami bantu agar Anda tetap nyaman menggunakan ICONNET?",
-            "winback": f"Selamat {waktu}, saya {cs_name} dari ICONNET ingin menginformasikan promo menarik untuk pelanggan setia seperti {customer_name} yang ingin kembali menggunakan layanan kami. Apakah Bapak/Ibu tertarik mendapatkan informasi lebih lanjut?"
-        }
-        greeting = opening_greetings.get(topic, f"Selamat {waktu}, ada yang bisa kami bantu?")
-        return {"question": greeting, "is_closing": False}
-
-    # Closing rules - LEBIH KETAT untuk mengurangi closing prematur
-    # Hanya close jika benar-benar ada keyword eksplisit untuk mengakhiri percakapan
-    explicit_closing_keywords = ["selesai", "cukup", "sudah jelas", "tidak ada lagi", "tidak perlu bantuan lagi", "sampai disini saja"]
-    last_answer = ""
-    if isinstance(conversation, list) and len(conversation) > 0:
-        last_answer = conversation[-1].get('a', '').lower()
-
-    # HANYA close jika ada keyword eksplisit atau percakapan sudah sangat panjang (>= 10)
-    explicit_closing = any(kw in last_answer for kw in explicit_closing_keywords)
-    very_long_conversation = isinstance(conversation, list) and len(conversation) >= 10
-    
-    if explicit_closing or very_long_conversation:
-        closing = f"Terima kasih atas waktunya, {customer_name}. Jika ada pertanyaan atau kebutuhan terkait layanan ICONNET, silakan hubungi kami kembali. Selamat {waktu}!"
-        response = {
-            "question": closing,
-            "is_closing": True,
-            "action": "finish",
-            "options": ["Selesai"]
-        }
-        print("[DEBUG] Sending closing response:", response)
-        return response
-
-    # Promo rules
-    promo_keywords = ["promo", "diskon", "potongan", "gratis", "penawaran", "cashback"]
-    if any(kw in last_answer for kw in promo_keywords):
-        return {
-            "question": "Kami memiliki promo menarik untuk Bapak/Ibu. Apakah Bapak/Ibu tertarik mendapatkan informasi promo ICONNET terbaru?",
-            "options": ["Ya, ingin tahu promo", "Tidak, terima kasih", "Sudah tahu", "Lainnya"],
-            "is_promo": True,
-            "is_closing": False
-        }
-
-    print(f"[DEBUG] Calling generate_question with topic={topic}, conversation length={len(conversation) if isinstance(conversation, list) else 'N/A'}")
-    result = generate_question(topic, conversation)
-    print(f"[DEBUG] generate_question returned: {result}")
-    
-    if not result or not result.get("question") or not result.get("options"):
-        print("[DEBUG] generate_question returned empty result - using fallback closing")
-        closing = f"Terima kasih atas waktunya, {customer_name}. Jika ada pertanyaan atau kebutuhan terkait layanan ICONNET, silakan hubungi kami kembali. Selamat {waktu}!"
-        response = {
-            "question": closing,
-            "is_closing": True,
-            "action": "finish",
-            "options": ["Selesai"]
-        }
-        print("[DEBUG] Sending fallback closing response:", response)
-        return response
-
-    q_lower = result.get("question", "").lower()
-    if any(kw in q_lower for kw in explicit_closing_keywords):
-        result["is_closing"] = True
-        result["action"] = "finish"
-        result["options"] = ["Selesai"]
-        print("[DEBUG] Sending closing result (from question):", result)
-    else:
-        result["is_closing"] = False
-    return result
+# DEPRECATED - Use generate_simulation_questions_endpoint instead
+# Removed old generate_simulation_questions_OLD function to avoid confusion
 
 
 @router.post("/predict")
@@ -214,38 +157,174 @@ def predict_final_endpoint(req: FinalPredictRequest):
         print(f"[DEBUG] Conversation text: {conversation_text}")
         print(f"[DEBUG] Answers: {answers}")
         
-        if req.topic == "telecollection":
-            # For telecollection, create specific prediction logic
-            prediction_result = predict_telecollection_status(conversation_text, answers)
-            print(f"[DEBUG] Telecollection prediction result: {prediction_result}")
+        # Use per-mode prediction
+        topic_norm = (req.topic or "").strip().lower()
+        if topic_norm == "winback":
+            prediction_result = wb_services.predict_outcome(req.conversation)
+        elif topic_norm == "telecollection":
+            prediction_result = tc_services.predict_outcome(req.conversation)
         else:
-            # For other topics, use Ollama
-            prediction_result = predict_status_promo_ollama(conversation_text)
-            print(f"[DEBUG] Ollama prediction result: {prediction_result}")
+            # fallback to consolidated predictor (retention or others)
+            prediction_result = generate_final_prediction(req.topic, req.conversation)
+        print(f"[DEBUG] {req.topic.title()} prediction result: {prediction_result}")
         
-        result = {
-            "customer_id": req.customer_id,
-            "mode": req.topic,
-            "status_dihubungi": status_dihubungi,
-            "topic": req.topic,
-            **prediction_result
-        }
+        # 🔧 CONVERT NEW PREDICTION FORMAT TO FRONTEND-COMPATIBLE FORMAT
+        if "keputusan" in prediction_result:
+            # Enhanced prediction format - convert to frontend format
+            # STREAMLINED: Only include fields needed for history table + detail view
+            frontend_result = {
+                # Core fields for history table
+                "customer_id": req.customer_id,
+                "topic": req.topic,
+                "status": prediction_result.get("keputusan", "BELUM PASTI"),
+                "alasan": prediction_result.get("alasan", "Analisis conversation"),
+                "estimasi_pembayaran": "Tidak dapat ditentukan",  # Will be set below per topic
+                
+                # Optional fields for detail modal/debugging (not shown in main table)
+                "status_dihubungi": status_dihubungi,
+                "confidence": prediction_result.get("confidence", "SEDANG"),
+                "probability": prediction_result.get("probability", 50),
+                "tanggal_prediksi": prediction_result.get("tanggal_prediksi"),
+                "jawaban_terinterpretasi": prediction_result.get("jawaban_terinterpretasi", []),
+                # New: risk indicator
+                "risk_level": prediction_result.get("risk_level", "low"),
+                "risk_label": prediction_result.get("risk_label", "Aman"),
+                "risk_color": prediction_result.get("risk_color", "#16a34a"),
+            }
+            
+            # Topic-specific enhancements (ONLY estimasi_pembayaran for history table)
+            if req.topic == "telecollection":
+                from datetime import datetime, timedelta
+                now = datetime.now()
+                
+                detail_analysis = prediction_result.get("detail_analysis", {})
+                timeline_commitments = detail_analysis.get("timeline_commitments", [])
+                
+                # Extract specific date if available
+                specific_date = None
+                for commitment in timeline_commitments:
+                    time_info = commitment.get('time_parsed', {})
+                    if time_info and time_info.get('formatted_date'):
+                        specific_date = time_info['formatted_date']
+                        break
+                
+                # Set estimasi_pembayaran based on keputusan
+                keputusan = prediction_result.get("keputusan", "")
+                if keputusan == "SUDAH BAYAR":
+                    frontend_result["estimasi_pembayaran"] = f"Sudah Lunas - {now.strftime('%d %B %Y')}"
+                elif keputusan == "AKAN BAYAR":
+                    if specific_date:
+                        frontend_result["estimasi_pembayaran"] = f"Komitmen: {specific_date}"
+                    else:
+                        target_date = now + timedelta(days=2)
+                        frontend_result["estimasi_pembayaran"] = f"{target_date.strftime('%d %B %Y')} (1-3 Hari)"
+                elif keputusan == "KEMUNGKINAN BAYAR":
+                    if specific_date:
+                        frontend_result["estimasi_pembayaran"] = f"{specific_date} (perlu follow-up)"
+                    else:
+                        target_date = now + timedelta(days=10)
+                        frontend_result["estimasi_pembayaran"] = f"{target_date.strftime('%d %B %Y')} (7-14 Hari)"
+                elif keputusan == "SULIT BAYAR":
+                    frontend_result["estimasi_pembayaran"] = "Follow-up Khusus Diperlukan"
+                else:
+                    frontend_result["estimasi_pembayaran"] = "Belum Dapat Ditentukan"
+                    
+            elif req.topic == "winback":
+                from datetime import datetime, timedelta
+                now = datetime.now()
+                
+                keputusan = prediction_result.get("keputusan", "")
+                
+                # Set estimasi_pembayaran based on keputusan for winback (activation timeline)
+                if "BERHASIL" in keputusan.upper() or "TERTARIK" in keputusan.upper():
+                    # Check for timeline keywords in answers
+                    activation_today = any('hari ini' in str(conv.get('a', '')).lower() for conv in req.conversation if isinstance(conv, dict))
+                    activation_tomorrow = any('besok' in str(conv.get('a', '')).lower() for conv in req.conversation if isinstance(conv, dict))
+                    
+                    if activation_today:
+                        frontend_result["estimasi_pembayaran"] = f"Target Aktivasi: Hari Ini ({now.strftime('%d %B %Y')})"
+                    elif activation_tomorrow:
+                        target = now + timedelta(days=1)
+                        frontend_result["estimasi_pembayaran"] = f"Target Aktivasi: Besok ({target.strftime('%d %B %Y')})"
+                    else:
+                        target = now + timedelta(days=3)
+                        frontend_result["estimasi_pembayaran"] = f"Target Aktivasi: {target.strftime('%d %B %Y')}"
+                        
+                elif "TIDAK" in keputusan.upper():
+                    # Check rejection reason
+                    pindah = any('pindah' in str(conv.get('a', '')).lower() for conv in req.conversation if isinstance(conv, dict))
+                    sudah_punya = any('sudah punya' in str(conv.get('a', '')).lower() for conv in req.conversation if isinstance(conv, dict))
+                    
+                    if pindah:
+                        frontend_result["estimasi_pembayaran"] = "Customer Sudah Pindah Lokasi"
+                    elif sudah_punya:
+                        frontend_result["estimasi_pembayaran"] = "Customer Sudah Menggunakan Provider Lain"
+                    else:
+                        frontend_result["estimasi_pembayaran"] = "Tidak Ada Rencana Reaktivasi"
+                        
+                elif "KEMUNGKINAN" in keputusan.upper():
+                    followup_date = now + timedelta(days=7)
+                    frontend_result["estimasi_pembayaran"] = f"Follow-up: {followup_date.strftime('%d %B %Y')}"
+                    
+                else:  # PERLU FOLLOW-UP or others
+                    followup_date = now + timedelta(days=5)
+                    frontend_result["estimasi_pembayaran"] = f"Evaluasi: {followup_date.strftime('%d %B %Y')}"
+                    
+            elif req.topic == "retention":
+                from datetime import datetime, timedelta
+                now = datetime.now()
+                
+                keputusan = prediction_result.get("keputusan", "")
+                
+                # Set estimasi_pembayaran based on keputusan for retention
+                if "LOYAL" in keputusan.upper() or "PUAS" in keputusan.upper():
+                    review_date = now + timedelta(days=30)
+                    frontend_result["estimasi_pembayaran"] = f"Review: {review_date.strftime('%d %B %Y')}"
+                    
+                elif "CHURN" in keputusan.upper() or "BERALIH" in keputusan.upper():
+                    urgent_date = now + timedelta(days=1)
+                    frontend_result["estimasi_pembayaran"] = f"Tindakan Segera: {urgent_date.strftime('%d %B %Y')}"
+                    
+                elif "RISIKO" in keputusan.upper():
+                    monitor_date = now + timedelta(days=7)
+                    frontend_result["estimasi_pembayaran"] = f"Monitor: {monitor_date.strftime('%d %B %Y')}"
+                    
+                else:
+                    monitor_date = now + timedelta(days=14)
+                    frontend_result["estimasi_pembayaran"] = f"Evaluasi: {monitor_date.strftime('%d %B %Y')}"
+            
+            result = frontend_result
+        else:
+            # Legacy prediction format - use as is with minimal fields
+            result = {
+                "customer_id": req.customer_id,
+                "topic": req.topic,
+                "status_dihubungi": status_dihubungi,
+                "status": prediction_result.get("status", "BELUM PASTI"),
+                "alasan": prediction_result.get("alasan", "Analisis conversation"),
+                "estimasi_pembayaran": prediction_result.get("estimasi_pembayaran", "-"),
+                "confidence": prediction_result.get("confidence", "SEDANG"),
+                "probability": prediction_result.get("probability", 50)
+            }
         
+        print(f"[FRONTEND] Converted result: {result}")
         return {"result": result}
         
     except Exception as e:
-        # Return fallback prediction on error
+        print(f"[ERROR] Prediction failed: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return minimal fallback prediction on error
         return {
             "result": {
                 "customer_id": req.customer_id,
-                "mode": req.topic,
-                "status_dihubungi": status_dihubungi if 'status_dihubungi' in locals() else "",
                 "topic": req.topic,
-                "prediction": "UNCERTAIN",
-                "status": "Error occurred during prediction",
-                "alasan": f"Error: {str(e)}",
+                "status_dihubungi": status_dihubungi if 'status_dihubungi' in locals() else "",
+                "status": "Error - Tidak dapat memprediksi",
+                "alasan": f"Terjadi kesalahan sistem: {str(e)}",
                 "estimasi_pembayaran": "Tidak dapat ditentukan",
-                "confidence": 0.0
+                "confidence": "RENDAH",
+                "probability": 0
             }
         }
 
@@ -327,16 +406,7 @@ def download_conversation(customer_id: str, topic: str):
     )
 
 
-@router.post("/update-status-dihubungi")
-async def update_status_dihubungi(
-    customer_id: str = Body(...),
-    status: str = Body(...)
-):
-    try:
-        save_conversation_to_excel(customer_id, topic="", status_dihubungi=status, conversation=[], prediction={})
-        return {"success": True, "status": status}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+# Removed duplicate update-status-dihubungi endpoint
 
 
 @router.post("/analyze-topics")
@@ -418,8 +488,97 @@ class GenerateSimulationRequest(BaseModel):
     conversation: list
     user: Optional[str] = None
 
+@router.post("/process-answer")
+async def process_customer_answer(request: ProcessAnswerRequest, db: Session = Depends(get_db)):
+    """Process customer answer with full conversation history and enhanced goal tracking"""
+    try:
+        from datetime import datetime
+        
+        # Validate input
+        if not request.customer_answer or not request.customer_answer.strip():
+            raise HTTPException(status_code=400, detail="customer_answer is required")
+        
+        # Get customer name
+        customer_name = "Pelanggan ICONNET"
+        if request.customer_id:
+            customer = db.query(Customer).filter(Customer.customer_id == request.customer_id).first()
+            if customer:
+                customer_name = customer.name
+        
+        # Build complete conversation history with the new answer
+        updated_conversation = request.conversation.copy()
+        updated_conversation.append({
+            "q": request.current_question,
+            "a": request.customer_answer
+        })
+        
+        # Generate next question using enhanced goal tracking system
+        print(f"\n{'='*60}")
+        print(f"🗣️  CONVERSATION LOG - Customer: {customer_name} ({request.customer_id})")
+        print(f"📞 Topic: {request.topic.upper()}")
+        print(f"🎯 Input Type: {request.input_type}")
+        print(f"💬 Customer Answer: '{request.customer_answer}'")
+        print(f"📊 Conversation Length: {len(updated_conversation)}")
+        
+        # Display full conversation history
+        print(f"\n📋 CONVERSATION HISTORY:")
+        for i, conv in enumerate(updated_conversation, 1):
+            print(f"   {i}. CS: {conv.get('q', '')[:80]}{'...' if len(conv.get('q', '')) > 80 else ''}")
+            print(f"      Customer: {conv.get('a', '')}")
+
+        print(f"\n🤖 Generating next question...")
+        question_result = _gen_question_by_topic(request.topic, updated_conversation)
+        
+        # Enhanced response with goal tracking info
+        if hasattr(question_result, 'get'):
+            goal_info = check_conversation_goals_completed(request.topic, updated_conversation)
+            
+            # Display goal progress in terminal
+            print(f"\n🎯 GOAL TRACKING STATUS:")
+            print(f"   📈 Completion: {goal_info.get('achievement_percentage', 0):.1f}%")
+            print(f"   ✅ Completed Goals: {goal_info.get('achieved_goals', [])}")
+            print(f"   📋 Remaining Goals: {goal_info.get('missing_goals', [])}")
+            
+            # Display individual goal scores
+            for goal in ["status_contact", "payment_barrier", "payment_timeline", "payment_method", "commitment_confirm", "follow_up_plan", "financial_capability"]:
+                if goal in goal_info:
+                    status = goal_info[goal]
+                    achieved = "✅" if status.get('achieved', False) else "❌"
+                    score = status.get('score', 0)
+                    print(f"   {achieved} {goal}: {score}/100")
+            
+            # Display next question
+            print(f"\n❓ NEXT QUESTION:")
+            print(f"   {question_result.get('question', 'N/A')}")
+            if question_result.get('options'):
+                print(f"   📝 Options: {question_result.get('options')}")
+            
+            print(f"   🏁 Is Closing: {question_result.get('is_closing', False)}")
+            print(f"{'='*60}\n")
+            
+            return {
+                **question_result,
+                "customer_name": customer_name,
+                "customer_response": request.customer_answer,
+                "input_type": request.input_type,
+                "conversation_length": len(updated_conversation),
+                "goal_progress": {
+                    "completed_goals": goal_info.get("achieved_goals", []),
+                    "remaining_goals": goal_info.get("missing_goals", []),
+                    "completion_percentage": goal_info.get("achievement_percentage", 0)
+                },
+                "updated_conversation": updated_conversation
+            }
+        else:
+            return question_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing answer: {str(e)}")
+
 @router.post("/generate-simulation-questions")
-def generate_simulation_questions_endpoint(request: GenerateSimulationRequest, db: Session = Depends(get_db)):
+def generate_simulation_questions(request: GenerateSimulationRequest, db: Session = Depends(get_db)):
     """Generate simulation questions - replaces the existing endpoint"""
     try:
         from datetime import datetime
@@ -447,32 +606,87 @@ def generate_simulation_questions_endpoint(request: GenerateSimulationRequest, d
             if user_obj and user_obj.name:
                 cs_name = user_obj.name.strip()
 
-        # Generate opening greeting based on topic
-        opening_greetings = {
-            "telecollection": f"Selamat {waktu}, Perkenalkan saya {cs_name} dari ICONNET, apakah benar saya terhubung dengan {customer_name}? Mohon maaf, Apakah bapak/ibu sudah melakukan pembayaran bulanan ICONNET?",
-            "retention": f"Selamat {waktu}, saya {cs_name} dari ICONNET ingin memastikan layanan kami tetap sesuai kebutuhan {customer_name}. Apakah ada yang bisa kami bantu agar Anda tetap nyaman menggunakan ICONNET?",
-            "winback": f"Selamat {waktu}, saya {cs_name} dari ICONNET ingin menginformasikan promo menarik untuk pelanggan setia seperti {customer_name} yang ingin kembali menggunakan layanan kami. Apakah Bapak/Ibu tertarik mendapatkan informasi lebih lanjut?"
-        }
-        
-        greeting = opening_greetings.get(request.topic, f"Selamat {waktu}, ada yang bisa kami bantu?")
-        
-        # Get appropriate options based on topic
-        if request.topic == "telecollection":
-            options = ["Ya, sudah bayar", "Belum bayar", "Lupa", "Tidak tahu"]
-        elif request.topic == "retention":
-            options = ["Ya, ada masalah", "Tidak ada masalah", "Layanan bagus", "Perlu perbaikan"]
-        elif request.topic == "winback":
-            options = ["Ya, tertarik", "Tidak tertarik", "Mau tahu dulu", "Nanti saja"]
-        else:
-            options = ["Ya", "Tidak", "Mungkin", "Lainnya"]
+        # Use CS ML Chatbot System
+        if len(request.conversation) == 0:
+            print(f"\n{'='*60}")
+            print(f"🚀 NEW CONVERSATION STARTED")
+            print(f"👤 Customer: {customer_name} ({request.customer_id})")
+            print(f"👨‍💼 CS Agent: {cs_name}")
+            print(f"📞 Topic: {request.topic.upper()}")
+            print(f"🕐 Time: {waktu}")
+            print(f"{'='*60}\n")
+            
+            # First question - align with mode-specific scripts (identity confirmation first)
+            dataset_q = get_question_from_dataset(request.topic)
 
-        return {
-            "question": greeting,
-            "options": options,
-            "is_closing": False,
-            "customer_name": customer_name,
-            "cs_name": cs_name
-        }
+            # Default opening fallback
+            greeting = f"Selamat {waktu}, ada yang bisa kami bantu?"
+            options = dataset_q.get("options", ["Ya", "Tidak", "Mungkin", "Lainnya"])
+            question_id = dataset_q.get("id", "opening")
+            goal = dataset_q.get("goal")
+
+            if request.topic == "retention":
+                # Use identity confirmation as the very first question for retention
+                # Prefer dataset question but personalize names and time context
+                q_text = dataset_q.get("question") or "Perkenalkan saya dari ICONNET. Apakah benar saya terhubung dengan Bapak/Ibu?"
+                # Basic personalization replacements
+                q_text = q_text.replace("[Nama Pelanggan]", str(customer_name))
+                q_text = q_text.replace("[Nama]", str(customer_name))
+                q_text = q_text.replace("[Nama Agen]", str(cs_name))
+                # If question doesn't include greeting, prepend a friendly salutation
+                if "selamat" not in q_text.lower() and "halo" not in q_text.lower():
+                    greeting = f"Halo {customer_name}! Selamat {waktu}, saya {cs_name} dari ICONNET. {q_text}"
+                else:
+                    greeting = q_text
+                # Standardize options for wrong-number routing
+                options = ["Ya, benar", "Bukan saya", "Salah sambung", "Keluarga"]
+                question_id = dataset_q.get("id", "ret_001")
+                goal = goal or "greeting_identity"
+            elif request.topic == "winback":
+                greeting = f"Selamat {waktu}, Bapak/Ibu. Perkenalkan saya {cs_name} dari ICONNET. Apakah benar saya terhubung dengan Bapak/Ibu {customer_name}?"
+            elif request.topic == "telecollection":
+                greeting = f"Halo {customer_name}, selamat {waktu}! Saya {cs_name} dari ICONNET. Untuk pembayaran bulanan ICONNET bulan ini, apakah sudah diselesaikan?"
+
+            print(f"📋 FIRST QUESTION GENERATED:")
+            print(f"❓ Question: {greeting}")
+            print(f"🔸 Options: {', '.join(options)}")
+            print(f"🔑 Question ID: {question_id}")
+            print(f"📊 Status: Opening conversation\n")
+            
+            return {
+                "question": greeting,
+                "options": options,
+                "question_id": question_id,  # Add question_id for tracking
+                "is_closing": False,
+                "goal": goal or ("greeting_identity" if request.topic == "retention" else None),
+                "customer_name": customer_name,
+                "cs_name": cs_name
+            }
+        else:
+            # Display conversation history
+            print(f"\n📜 CONVERSATION HISTORY:")
+            for i, conv in enumerate(request.conversation[-3:], 1):  # Show last 3 exchanges
+                print(f"   {i}. Q: {conv.get('q', 'N/A')}")
+                print(f"      A: {conv.get('a', 'N/A')}")
+            print()
+            
+            # Subsequent questions - use CS ML Chatbot system
+            question_result = _gen_question_by_topic(request.topic, request.conversation)
+            
+            print(f"📋 NEXT QUESTION GENERATED:")
+            print(f"❓ Question: {question_result.get('question', 'N/A')}")
+            if question_result.get('options'):
+                print(f"🔸 Options: {', '.join(question_result.get('options', []))}")
+            print(f"🔚 Is Closing: {'Yes' if question_result.get('is_closing') else 'No'}")
+            if question_result.get('question_id'):
+                print(f"🔑 Question ID: {question_result.get('question_id')}")
+            print()
+            
+            return {
+                **question_result,
+                "customer_name": customer_name,
+                "cs_name": cs_name
+            }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating questions: {str(e)}")
@@ -532,3 +746,255 @@ async def parse_date_from_text(request: RelativeDateRequest):
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error parsing date: {str(e)}")
+
+# ===============================================
+# CS ML CHATBOT ENDPOINTS
+# ===============================================
+
+class CSChatbotRequest(BaseModel):
+    mode: str  # winback, telecollection, retention
+    conversation_history: Optional[List[Dict]] = []
+    customer_id: Optional[str] = "DEMO_CUSTOMER"
+
+class CSChatbotAnswerRequest(BaseModel):
+    mode: str
+    question_id: str
+    selected_answer: str
+    conversation_history: List[Dict]
+    customer_id: Optional[str] = "DEMO_CUSTOMER"
+
+class CSSimulationRequest(BaseModel):
+    mode: str
+    answer_mode: Optional[str] = "random"  # random, rule_based, ollama
+    max_questions: Optional[int] = 10
+    customer_id: Optional[str] = "DEMO_CUSTOMER"
+
+@router.post("/cs-chatbot/start")
+async def start_cs_chatbot_conversation(request: CSChatbotRequest):
+    """Start CS ML Chatbot conversation dengan mode tertentu"""
+    try:
+        if request.mode not in CS_DATASET:
+            raise HTTPException(status_code=400, detail=f"Mode '{request.mode}' tidak tersedia. Pilihan: {list(CS_DATASET.keys())}")
+
+        # Generate pertanyaan pertama
+        question_result = _gen_question_by_topic(request.mode, request.conversation_history)
+        
+        # Cek goal completion status
+        goal_status = check_conversation_goals_completed(request.mode, request.conversation_history)
+        
+        return {
+            "success": True,
+            "mode": request.mode,
+            "customer_id": request.customer_id,
+            "question": question_result,
+            "goal_status": goal_status,
+            "available_modes": list(CS_DATASET.keys()),
+            "total_dataset_questions": len(CS_DATASET[request.mode])
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error starting chatbot: {str(e)}")
+
+@router.post("/cs-chatbot/next-question")
+async def get_next_cs_question(request: CSChatbotAnswerRequest):
+    """Dapatkan pertanyaan selanjutnya berdasarkan jawaban customer"""
+    try:
+        # Update conversation history dengan jawaban terbaru
+        updated_conversation = request.conversation_history + [{
+            "question_id": request.question_id,
+            "question": "Previous question",  # Will be updated
+            "answer": request.selected_answer,
+            "timestamp": get_current_date_info()["date_short"]
+        }]
+
+        # Generate pertanyaan selanjutnya
+        next_question = _gen_question_by_topic(request.mode, updated_conversation)
+        
+        # Cek status goals
+        goal_status = check_conversation_goals_completed(request.mode, updated_conversation)
+        
+        return {
+            "success": True,
+            "mode": request.mode,
+            "customer_id": request.customer_id,
+            "next_question": next_question,
+            "conversation_history": updated_conversation,
+            "goal_status": goal_status
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting next question: {str(e)}")
+
+@router.post("/cs-chatbot/simulate-full-conversation")
+async def simulate_cs_conversation(request: CSSimulationRequest):
+    """Simulasi percakapan lengkap dengan jawaban otomatis"""
+    try:
+        if request.mode not in CS_DATASET:
+            raise HTTPException(status_code=400, detail=f"Mode '{request.mode}' tidak tersedia")
+        
+        conversation_history = []
+        simulation_log = []
+        
+        for question_num in range(request.max_questions):
+            # Generate pertanyaan
+            question_result = _gen_question_by_topic(request.mode, conversation_history)
+            
+            if question_result.get("is_closing") or question_result.get("goals_completed"):
+                simulation_log.append({
+                    "step": question_num + 1,
+                    "action": "CONVERSATION_ENDED",
+                    "reason": "Goals completed" if question_result.get("goals_completed") else "Closing question reached",
+                    "question": question_result
+                })
+                break
+            
+            # Generate jawaban otomatis customer (pass context and mode for better answers)
+            customer_answer = generate_automatic_customer_answer(
+                question_result,
+                request.answer_mode,
+                conversation_history,
+                request.mode
+            )
+            
+            # Update conversation history
+            conversation_entry = {
+                "question_id": question_result.get("question_id", f"q_{question_num}"),
+                "question": question_result["question"],
+                "answer": customer_answer,
+                "goal": question_result.get("goal", "unknown"),
+                "timestamp": get_current_date_info()["date_short"]
+            }
+            
+            conversation_history.append(conversation_entry)
+            
+            simulation_log.append({
+                "step": question_num + 1,
+                "cs_question": question_result["question"],
+                "customer_answer": customer_answer,
+                "question_source": question_result.get("source", "unknown"),
+                "goal": question_result.get("goal")
+            })
+        
+        # Final goal assessment
+        final_goal_status = check_conversation_goals_completed(request.mode, conversation_history)
+        
+        return {
+            "success": True,
+            "simulation_complete": True,
+            "mode": request.mode,
+            "answer_mode": request.answer_mode,
+            "total_questions": len(conversation_history),
+            "conversation_history": conversation_history,
+            "simulation_log": simulation_log,
+            "final_goal_status": final_goal_status,
+            "summary": {
+                "goals_achieved": final_goal_status.get("achieved_goals", []),
+                "goals_missing": final_goal_status.get("missing_goals", []),
+                "completion_percentage": final_goal_status.get("achievement_percentage", 0)
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Simulation error: {str(e)}")
+
+@router.get("/cs-chatbot/dataset/{mode}")
+async def get_cs_dataset_info(mode: str):
+    """Dapatkan informasi dataset untuk mode tertentu"""
+    try:
+        if mode not in CS_DATASET:
+            raise HTTPException(status_code=400, detail=f"Mode '{mode}' tidak tersedia")
+        
+        dataset = CS_DATASET[mode]
+        goals = CONVERSATION_GOALS[mode]
+        
+        return {
+            "success": True,
+            "mode": mode,
+            "total_questions": len(dataset),
+            "questions": dataset,
+            "required_goals": goals,
+            "question_flow": {
+                q["id"]: {
+                    "question": q["question"],
+                    "goal": q["goal"],
+                    "has_follow_up": bool(q.get("follow_up_conditions"))
+                } for q in dataset
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting dataset: {str(e)}")
+
+@router.get("/cs-chatbot/modes")
+async def get_available_modes():
+    """Dapatkan semua mode yang tersedia"""
+    return {
+        "success": True,
+        "available_modes": list(CS_DATASET.keys()),
+        "mode_descriptions": {
+            "winback": "Percakapan untuk mengembalikan customer yang sudah berhenti",
+            "telecollection": "Percakapan untuk menagih pembayaran yang tertunggak",  
+            "retention": "Percakapan untuk mempertahankan customer yang masih aktif"
+        },
+        "total_questions_per_mode": {
+            mode: len(questions) for mode, questions in CS_DATASET.items()
+        }
+    }
+
+@router.post("/cs-chatbot/final-prediction")
+async def get_final_prediction(request: dict):
+    """Generate prediksi akhir berdasarkan semua jawaban dalam percakapan"""
+    try:
+        mode = request.get("mode", "telecollection")
+        conversation_history = request.get("conversation", [])
+        
+        if not conversation_history:
+            raise HTTPException(status_code=400, detail="Conversation history is required")
+        
+        if mode not in CS_DATASET:
+            raise HTTPException(status_code=400, detail=f"Mode '{mode}' tidak tersedia")
+        
+        # Generate final prediction via per-mode services
+        mode_norm = (mode or "").strip().lower()
+        if mode_norm == "winback":
+            prediction_result = wb_services.predict_outcome(conversation_history)
+        elif mode_norm == "telecollection":
+            prediction_result = tc_services.predict_outcome(conversation_history)
+        else:
+            prediction_result = generate_final_prediction(mode, conversation_history)
+        
+        if "error" in prediction_result:
+            raise HTTPException(status_code=500, detail=prediction_result["error"])
+        
+        # Get conversation analysis
+        goals_analysis = check_conversation_goals_completed(mode, conversation_history)
+        
+        return {
+            "success": True,
+            "mode": mode,
+            "prediction": prediction_result,
+            "conversation_analysis": goals_analysis,
+            "total_responses": len(conversation_history),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error generating prediction: {str(e)}")
+
+@router.get("/ollama/performance")
+async def get_ollama_performance():
+    """Get Ollama AI performance statistics and accuracy metrics"""
+    try:
+        performance_report = get_ollama_performance_report()
+        
+        return {
+            "status": "success",
+            "message": "Ollama performance statistics retrieved",
+            "data": performance_report,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving Ollama performance: {str(e)}")

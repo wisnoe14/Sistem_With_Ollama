@@ -1,0 +1,20 @@
+{
+  "mode": "telecollection",
+  "conversation": [
+    {
+      "q": "Apakah ada kendala dalam pembayaran?",
+      "a": "Saya lagi kesulitan keuangan sekarang, tapi mau coba cicilan",
+      "question_id": "tc_001"
+    },
+    {
+      "q": "Apakah kami bisa membantu dengan opsi cicilan?", 
+      "a": "Ya, tolong bantu dengan cicilan",
+      "question_id": "tc_002"
+    },
+    {
+      "q": "Kapan kira-kira bisa mulai cicilan?",
+      "a": "Minggu depan insya Allah bisa mulai",
+      "question_id": "tc_003"
+    }
+  ]
+}

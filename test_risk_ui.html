@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Risk Indicator - History Preview</title>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f3f4f6;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th {
+            background: #f9fafb;
+            padding: 12px;
+            text-align: left;
+            font-weight: bold;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 6px;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .btn {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        .btn:hover {
+            background: #2563eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Test Risk Indicator - Simulation History Preview</h1>
+        <p>This page simulates how risk indicators will appear in the actual application.</p>
+        
+        <div>
+            <button class="btn" onclick="addTestData()">➕ Add Test Data to LocalStorage</button>
+            <button class="btn" onclick="clearHistory()">🗑️ Clear History</button>
+            <button class="btn" onclick="location.reload()">🔄 Refresh</button>
+        </div>
+
+        <h2>Simulation History</h2>
+        <table id="historyTable">
+            <thead>
+                <tr>
+                    <th>TANGGAL</th>
+                    <th>CUSTOMER ID</th>
+                    <th>NAMA</th>
+                    <th>TOPIK</th>
+                    <th>STATUS</th>
+                    <th>INDIKATOR</th>
+                    <th>ALASAN</th>
+                    <th>ESTIMASI</th>
+                </tr>
+            </thead>
+            <tbody id="historyBody">
+                <tr>
+                    <td colspan="8" style="text-align: center; color: #9ca3af;">No data yet. Click "Add Test Data" to simulate.</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        function renderHistory() {
+            const history = JSON.parse(localStorage.getItem('simulationHistory') || '[]');
+            const tbody = document.getElementById('historyBody');
+            
+            if (history.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: #9ca3af;">Belum ada data riwayat simulasi.</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = history.map((item, idx) => `
+                <tr style="background: ${idx % 2 === 0 ? '#ffffff' : '#f9fafb'}">
+                    <td>${item.tanggal}</td>
+                    <td>${item.customer_id}</td>
+                    <td>${item.nama}</td>
+                    <td>${item.topik}</td>
+                    <td>${item.status}</td>
+                    <td>
+                        <span class="badge" style="background-color: ${item.risk_color || '#16a34a'}" title="${item.risk_label || 'Aman'}">
+                            ${item.risk_label || 'Aman'}
+                        </span>
+                    </td>
+                    <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.alasan}</td>
+                    <td>${item.estimasi_pembayaran || '-'}</td>
+                </tr>
+            `).join('');
+        }
+        
+        function addTestData() {
+            const now = new Date();
+            const tanggal = now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID');
+            
+            const testData = [
+                {
+                    tanggal: tanggal,
+                    customer_id: 'TEST001',
+                    nama: 'Budi Santoso',
+                    topik: 'telecollection',
+                    status: 'SUDAH BAYAR',
+                    alasan: 'Customer telah melakukan pembayaran tepat waktu dengan komitmen yang baik',
+                    estimasi_pembayaran: 'Sudah Lunas',
+                    risk_level: 'low',
+                    risk_label: 'Aman',
+                    risk_color: '#16a34a'
+                },
+                {
+                    tanggal: tanggal,
+                    customer_id: 'TEST002',
+                    nama: 'Siti Nurhaliza',
+                    topik: 'retention',
+                    status: 'BERHENTI',
+                    alasan: 'Customer memutuskan untuk berhenti berlangganan karena pindah rumah',
+                    estimasi_pembayaran: '-',
+                    risk_level: 'high',
+                    risk_label: 'Berisiko Tinggi',
+                    risk_color: '#dc2626'
+                },
+                {
+                    tanggal: tanggal,
+                    customer_id: 'TEST003',
+                    nama: 'Ahmad Yani',
+                    topik: 'winback',
+                    status: 'PERTIMBANGKAN',
+                    alasan: 'Customer masih mempertimbangkan untuk aktivasi kembali, ada keluhan sebelumnya',
+                    estimasi_pembayaran: 'Follow-up diperlukan',
+                    risk_level: 'medium',
+                    risk_label: 'Sedang',
+                    risk_color: '#f59e0b'
+                }
+            ];
+            
+            const existing = JSON.parse(localStorage.getItem('simulationHistory') || '[]');
+            const updated = [...testData, ...existing];
+            localStorage.setItem('simulationHistory', JSON.stringify(updated));
+            
+            alert('✅ Test data added to localStorage!');
+            renderHistory();
+        }
+        
+        function clearHistory() {
+            if (confirm('Are you sure you want to clear all history?')) {
+                localStorage.removeItem('simulationHistory');
+                alert('🗑️ History cleared!');
+                renderHistory();
+            }
+        }
+        
+        // Initial render
+        renderHistory();
+    </script>
+</body>
+</html>

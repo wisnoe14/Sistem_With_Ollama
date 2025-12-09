@@ -2,20 +2,61 @@ import React from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 
+interface HistoryItem {
+  tanggal?: string;
+  date?: string;
+  customer_id?: string;
+  nama?: string;
+  topik?: string;
+  topic?: string;
+  status?: string;
+  alasan?: string;
+  estimasi_pembayaran?: string;
+  risk_level?: string;
+  risk_label?: string;
+  risk_color?: string;
+  result?: {
+    customer_id?: string;
+    customer_name?: string;
+    status?: string;
+    alasan?: string;
+    estimasi_pembayaran?: string;
+  };
+}
+
 const CustomerSimulationHistoryMenu: React.FC = () => {
   const navigate = useNavigate();
   const historyRaw = localStorage.getItem("simulationHistory");
-  const history = historyRaw ? JSON.parse(historyRaw) : [];
+  const history: HistoryItem[] = historyRaw ? JSON.parse(historyRaw) : [];
+  
+  // Debug: Log data yang ada di localStorage
+  console.log('🔍 Raw history data:', historyRaw);
+  console.log('🔍 Parsed history:', history);
+  console.log('🔍 History length:', history.length);
+  
+  // Filter data yang valid (memiliki minimal topik, status, dan alasan)
+  const validHistory = history.filter(item => {
+    const hasValidData = (item.topik || item.topic) && 
+                        (item.status || item.result?.status) && 
+                        (item.alasan || item.result?.alasan);
+    if (!hasValidData) {
+      console.log('⚠️ Skipping invalid item:', item);
+    }
+    return hasValidData;
+  });
+  
+  console.log('✅ Valid history items:', validHistory.length);
 
   const handleExport = () => {
-    const worksheetData = history.map((item: any) => ({
+    const worksheetData = validHistory.map((item: HistoryItem) => ({
       Tanggal: item.tanggal || item.date,
       "Customer ID": item.customer_id || item.result?.customer_id || '-',
       Nama: item.nama || item.result?.customer_name || sessionStorage.getItem('customer_name') || '-',
       Topik: item.topik || item.topic || '-',
       Status: item.status || item.result?.status || '-',
       Alasan: item.alasan || item.result?.alasan || '-',
-      "Estimasi Bayar": item.estimasi_pembayaran || item.result?.estimasi_pembayaran || '-'
+      "Estimasi Bayar": item.estimasi_pembayaran || item.result?.estimasi_pembayaran || '-',
+      Indikator: item.risk_label || '-'
     }));
     const worksheet = XLSX.utils.json_to_sheet(worksheetData);
     const workbook = XLSX.utils.book_new();
@@ -42,16 +83,29 @@ const CustomerSimulationHistoryMenu: React.FC = () => {
             <button
               onClick={handleReset}
               className="flex items-center gap-2 px-4 py-2 bg-red-500 hover:bg-red-700 text-white font-semibold rounded-lg text-sm transition-colors shadow-md"
-              disabled={history.length === 0}
+              disabled={validHistory.length === 0}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               Reset
+            </button>
+            <button
+              onClick={() => {
+                console.log('🔧 Debug Info:');
+                console.log('Raw localStorage:', localStorage.getItem('simulationHistory'));
+                console.log('Total items:', history.length);
+                console.log('Valid items:', validHistory.length);
+                console.log('Invalid items:', history.length - validHistory.length);
+                alert(`Debug info logged to console.\nTotal: ${history.length} items\nValid: ${validHistory.length} items\nInvalid: ${history.length - validHistory.length} items`);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-700 text-white font-semibold rounded-lg text-sm transition-colors shadow-md"
+            >
+              🔧 Debug
             </button>
           </div>
           <button
             onClick={handleExport}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg text-sm transition-colors shadow-md"
-            disabled={history.length === 0}
+            disabled={validHistory.length === 0}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" /></svg>
             Ekspor ke Excel
@@ -68,43 +122,81 @@ const CustomerSimulationHistoryMenu: React.FC = () => {
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Alasan</th>
                 <th className="px-4 py-3">Estimasi Bayar</th>
+                <th className="px-4 py-3">Indikator</th>
                 <th className="px-4 py-3">Aksi</th>
               </tr>
             </thead>
-            {history.length > 0 ? (
+            {validHistory.length > 0 ? (
               <tbody>
-                {history.map((item: any, idx: number) => (
-                  <tr key={idx} className="bg-white border-b hover:bg-gray-50">
-                    <td className="px-4 py-3">{item.tanggal || item.date || '-'}</td>
-                    <td className="px-4 py-3">{item.customer_id || item.result?.customer_id || '-'}</td>
-                    <td className="px-4 py-3">{item.nama || item.result?.customer_name || sessionStorage.getItem('customer_name') || '-'}</td>
-                    <td className="px-4 py-3">{item.topik || item.topic || '-'}</td>
-                    <td className="px-4 py-3">{item.status || item.result?.status || '-'}</td>
-                    <td className="px-4 py-3">{item.alasan || item.result?.alasan || '-'}</td>
-                    <td className="px-4 py-3">{item.estimasi_pembayaran || item.result?.estimasi_pembayaran || '-'}</td>
-                    <td className="px-4 py-3">
-                      <button
-                        className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 transition-all"
-                        onClick={() => navigate('/detail-pelanggan', { state: { detail: {
-                          customer_id: item.customer_id || item.result?.customer_id || '-',
-                          nama: item.nama || item.result?.customer_name || sessionStorage.getItem('customer_name') || '-',
-                          topik: item.topik || item.topic || '-',
-                          status: item.status || item.result?.status || '-',
-                          alasan: item.alasan || item.result?.alasan || '-',
-                          estimasi_pembayaran: item.estimasi_pembayaran || item.result?.estimasi_pembayaran || '-',
-                          tanggal: item.tanggal || item.date || '-'
-                        } } })}
-                      >
-                        Detail
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {validHistory.map((item: HistoryItem, idx: number) => {
+                  // Debug: Log setiap item untuk melihat strukturnya
+                  console.log(`🔍 Item ${idx}:`, item);
+                  console.log(`🔍 Item ${idx} - topik:`, item.topik || item.topic || '-');
+                  console.log(`🔍 Item ${idx} - status:`, item.status || item.result?.status || '-');
+                  console.log(`🔍 Item ${idx} - alasan:`, item.alasan || item.result?.alasan || '-');
+                  
+                  return (
+                    <tr key={idx} className="bg-white border-b hover:bg-gray-50">
+                      <td className="px-4 py-3">{item.tanggal || item.date || '-'}</td>
+                      <td className="px-4 py-3">{item.customer_id || item.result?.customer_id || '-'}</td>
+                      <td className="px-4 py-3">{item.nama || item.result?.customer_name || sessionStorage.getItem('customer_name') || '-'}</td>
+                      <td className="px-4 py-3">{item.topik || item.topic || '-'}</td>
+                      <td className="px-4 py-3">{item.status || item.result?.status || '-'}</td>
+                      <td className="px-4 py-3 max-w-md">
+                        <div 
+                          className="text-sm text-gray-700 overflow-hidden" 
+                          style={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: 'vertical',
+                            lineHeight: '1.5em',
+                            maxHeight: '4.5em'
+                          }}
+                          title={item.alasan || item.result?.alasan || '-'}
+                        >
+                          {item.alasan || item.result?.alasan || '-'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">{item.estimasi_pembayaran || item.result?.estimasi_pembayaran || '-'}</td>
+                      <td className="px-4 py-3">
+                        {item.risk_level && item.risk_label && item.risk_color ? (
+                          <span 
+                            className="inline-block px-2 py-1 text-xs font-semibold text-white rounded"
+                            style={{ backgroundColor: item.risk_color }}
+                          >
+                            {item.risk_label}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          className="px-3 py-1 bg-blue-600 text-white rounded text-xs font-semibold hover:bg-blue-700 transition-all"
+                          onClick={() => navigate('/detail-pelanggan', { state: { detail: {
+                            customer_id: item.customer_id || item.result?.customer_id || '-',
+                            nama: item.nama || item.result?.customer_name || sessionStorage.getItem('customer_name') || '-',
+                            topik: item.topik || item.topic || '-',
+                            status: item.status || item.result?.status || '-',
+                            alasan: item.alasan || item.result?.alasan || '-',
+                            estimasi_pembayaran: item.estimasi_pembayaran || item.result?.estimasi_pembayaran || '-',
+                            tanggal: item.tanggal || item.date || '-',
+                            risk_level: item.risk_level,
+                            risk_label: item.risk_label,
+                            risk_color: item.risk_color
+                          } } })}
+                        >
+                          Detail
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             ) : (
               <tbody>
                 <tr>
-                  <td colSpan={8} className="text-center py-4">Tidak ada data riwayat simulasi.</td>
+                  <td colSpan={9} className="text-center py-4">Tidak ada data riwayat simulasi.</td>
                 </tr>
               </tbody>
             )}

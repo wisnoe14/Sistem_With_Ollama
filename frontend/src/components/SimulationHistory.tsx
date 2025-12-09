@@ -9,6 +9,10 @@ interface HistoryItem {
   topik: string;
   status: string;
   alasan: string;
+  estimasi_pembayaran?: string;
+  risk_level?: string;
+  risk_label?: string;
+  risk_color?: string;
 }
 
 interface SimulationHistoryProps {
@@ -17,7 +21,7 @@ interface SimulationHistoryProps {
 
 export const SimulationHistory: React.FC<SimulationHistoryProps> = ({ history }) => {
   const tableRef = useRef<HTMLTableElement>(null);
-  const [selectedResult, setSelectedResult] = useState<any | null>(null);
+  const [selectedResult, setSelectedResult] = useState<HistoryItem | null>(null);
 
   const handleExport = () => {
     const table = tableRef.current;
@@ -65,14 +69,16 @@ export const SimulationHistory: React.FC<SimulationHistoryProps> = ({ history })
                 <th className="py-3 px-4 text-left font-bold border-b border-gray-200">NAMA</th>
                 <th className="py-3 px-4 text-left font-bold border-b border-gray-200">TOPIK</th>
                 <th className="py-3 px-4 text-left font-bold border-b border-gray-200">STATUS</th>
+                <th className="py-3 px-4 text-left font-bold border-b border-gray-200">INDIKATOR</th>
                 <th className="py-3 px-4 text-left font-bold border-b border-gray-200">ALASAN</th>
+                <th className="py-3 px-4 text-left font-bold border-b border-gray-200">ESTIMASI PEMBAYARAN</th>
                 <th className="py-3 px-4 text-left font-bold border-b border-gray-200">AKSI</th>
               </tr>
             </thead>
             <tbody>
               {history.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-4 px-4 text-center text-gray-500">
+                  <td colSpan={8} className="py-4 px-4 text-center text-gray-500">
                     Tidak ada data riwayat simulasi.
                   </td>
                 </tr>
@@ -89,7 +95,31 @@ export const SimulationHistory: React.FC<SimulationHistoryProps> = ({ history })
                     <td className="py-3 px-4 align-top">{item.nama}</td>
                     <td className="py-3 px-4 align-top">{item.topik}</td>
                     <td className="py-3 px-4 align-top">{item.status}</td>
-                    <td className="py-3 px-4 align-top">{item.alasan}</td>
+                    <td className="py-3 px-4 align-top">
+                      <span
+                        className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold"
+                        style={{ backgroundColor: item.risk_color || '#16a34a', color: '#fff' }}
+                        title={item.risk_label || 'Aman'}
+                      >
+                        {item.risk_label || 'Aman'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 align-top max-w-md">
+                      <div 
+                        className="text-sm text-gray-700 overflow-hidden" 
+                        style={{
+                          display: '-webkit-box',
+                          WebkitLineClamp: 3,
+                          WebkitBoxOrient: 'vertical',
+                          lineHeight: '1.5em',
+                          maxHeight: '4.5em'
+                        }}
+                        title={item.alasan}
+                      >
+                        {item.alasan}
+                      </div>
+                    </td>
+                    <td className="py-3 px-4 align-top">{item.estimasi_pembayaran || '-'}</td>
                     <td className="py-3 px-4 align-top">
                       <button
                         onClick={() => handleDetail(idx)}

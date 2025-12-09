@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Diagnosis - History Data Inspector</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+        .content {
+            padding: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+        }
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 20px;
+        }
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            margin: 5px;
+            transition: all 0.3s;
+        }
+        .btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .btn-danger {
+            background: #ef4444;
+        }
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+        .btn-success {
+            background: #10b981;
+        }
+        .btn-success:hover {
+            background: #059669;
+        }
+        .status {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 14px;
+            margin: 5px 0;
+        }
+        .status-good { background: #d1fae5; color: #065f46; }
+        .status-warning { background: #fef3c7; color: #92400e; }
+        .status-error { background: #fee2e2; color: #991b1b; }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th {
+            background: #667eea;
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        tr:hover {
+            background: #f9fafb;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            color: white;
+            text-transform: uppercase;
+        }
+        .code-block {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            margin-top: 10px;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 5px;
+        }
+        .stat-label {
+            color: #6b7280;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Simulation History Inspector</h1>
+            <p>Diagnosa data riwayat simulasi & verifikasi risk indicator</p>
+        </div>
+        
+        <div class="content">
+            <!-- Status Section -->
+            <div class="section">
+                <h2>🔍 Status localStorage</h2>
+                <div id="localStorageStatus">Checking...</div>
+                <div class="stats" id="stats"></div>
+            </div>
+
+            <!-- Actions Section -->
+            <div class="section">
+                <h2>⚙️ Actions</h2>
+                <button class="btn" onclick="loadHistory()">🔄 Reload Data</button>
+                <button class="btn btn-success" onclick="addSampleData()">➕ Add Sample Data (with Risk)</button>
+                <button class="btn btn-danger" onclick="clearHistory()">🗑️ Clear All History</button>
+                <button class="btn" onclick="exportJSON()">💾 Export JSON</button>
+            </div>
+
+            <!-- Data Table Section -->
+            <div class="section">
+                <h2>📋 History Data</h2>
+                <div id="historyTable">No data loaded</div>
+            </div>
+
+            <!-- Raw Data Section -->
+            <div class="section">
+                <h2>🔬 Raw Data (JSON)</h2>
+                <div class="code-block" id="rawData">null</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function loadHistory() {
+            const historyStr = localStorage.getItem('simulationHistory');
+            const rawDataDiv = document.getElementById('rawData');
+            const statusDiv = document.getElementById('localStorageStatus');
+            const statsDiv = document.getElementById('stats');
+            const tableDiv = document.getElementById('historyTable');
+            
+            if (!historyStr) {
+                statusDiv.innerHTML = '<span class="status status-warning">⚠️ No history data found in localStorage</span>';
+                rawDataDiv.textContent = 'null';
+                statsDiv.innerHTML = '';
+                tableDiv.innerHTML = '<p style="color: #9ca3af; text-align: center;">No data available</p>';
+                return;
+            }
+            
+            try {
+                const history = JSON.parse(historyStr);
+                rawDataDiv.textContent = JSON.stringify(history, null, 2);
+                
+                // Calculate stats
+                const total = history.length;
+                const withRisk = history.filter(item => item.risk_level).length;
+                const withoutRisk = total - withRisk;
+                
+                const riskCounts = {
+                    high: history.filter(item => item.risk_level === 'high').length,
+                    medium: history.filter(item => item.risk_level === 'medium').length,
+                    low: history.filter(item => item.risk_level === 'low').length,
+                };
+                
+                statusDiv.innerHTML = `<span class="status status-good">✅ Data loaded successfully</span>`;
+                
+                statsDiv.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-value">${total}</div>
+                        <div class="stat-label">Total Records</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: #10b981;">${withRisk}</div>
+                        <div class="stat-label">With Risk Data</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: #ef4444;">${withoutRisk}</div>
+                        <div class="stat-label">Missing Risk Data</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: #dc2626;">${riskCounts.high}</div>
+                        <div class="stat-label">High Risk</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: #f59e0b;">${riskCounts.medium}</div>
+                        <div class="stat-label">Medium Risk</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value" style="color: #16a34a;">${riskCounts.low}</div>
+                        <div class="stat-label">Low Risk</div>
+                    </div>
+                `;
+                
+                // Build table
+                if (history.length === 0) {
+                    tableDiv.innerHTML = '<p style="color: #9ca3af; text-align: center;">No records</p>';
+                    return;
+                }
+                
+                let tableHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Tanggal</th>
+                                <th>Customer ID</th>
+                                <th>Topik</th>
+                                <th>Status</th>
+                                <th>Risk Indicator</th>
+                                <th>Alasan (Preview)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                history.forEach((item, idx) => {
+                    const hasRisk = item.risk_level && item.risk_label && item.risk_color;
+                    const riskBadge = hasRisk 
+                        ? `<span class="badge" style="background: ${item.risk_color}">${item.risk_label}</span>`
+                        : '<span class="status status-error">❌ Missing</span>';
+                    
+                    tableHTML += `
+                        <tr>
+                            <td>${idx + 1}</td>
+                            <td>${item.tanggal || '-'}</td>
+                            <td>${item.customer_id || '-'}</td>
+                            <td>${item.topik || '-'}</td>
+                            <td>${item.status || '-'}</td>
+                            <td>${riskBadge}</td>
+                            <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${(item.alasan || '-').substring(0, 60)}...</td>
+                        </tr>
+                    `;
+                });
+                
+                tableHTML += `
+                        </tbody>
+                    </table>
+                `;
+                
+                tableDiv.innerHTML = tableHTML;
+                
+            } catch (error) {
+                statusDiv.innerHTML = `<span class="status status-error">❌ Error parsing data: ${error.message}</span>`;
+                rawDataDiv.textContent = historyStr;
+            }
+        }
+        
+        function addSampleData() {
+            const now = new Date();
+            const tanggal = now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID');
+            
+            const samples = [
+                {
+                    tanggal: tanggal,
+                    customer_id: 'DIAG001',
+                    nama: 'Test User - Low Risk',
+                    topik: 'telecollection',
+                    status: 'SUDAH BAYAR',
+                    alasan: 'Customer telah melakukan pembayaran tepat waktu dengan komitmen yang sangat baik',
+                    estimasi_pembayaran: 'Sudah Lunas',
+                    risk_level: 'low',
+                    risk_label: 'Aman',
+                    risk_color: '#16a34a'
+                },
+                {
+                    tanggal: tanggal,
+                    customer_id: 'DIAG002',
+                    nama: 'Test User - High Risk',
+                    topik: 'retention',
+                    status: 'BERHENTI',
+                    alasan: 'Customer memutuskan untuk berhenti berlangganan karena pindah ke lokasi baru',
+                    estimasi_pembayaran: '-',
+                    risk_level: 'high',
+                    risk_label: 'Berisiko Tinggi',
+                    risk_color: '#dc2626'
+                },
+                {
+                    tanggal: tanggal,
+                    customer_id: 'DIAG003',
+                    nama: 'Test User - Medium Risk',
+                    topik: 'winback',
+                    status: 'PERTIMBANGKAN',
+                    alasan: 'Customer masih dalam tahap pertimbangan untuk aktivasi kembali, ada beberapa keluhan',
+                    estimasi_pembayaran: 'Belum dapat ditentukan',
+                    risk_level: 'medium',
+                    risk_label: 'Sedang',
+                    risk_color: '#f59e0b'
+                }
+            ];
+            
+            const existing = JSON.parse(localStorage.getItem('simulationHistory') || '[]');
+            const updated = [...samples, ...existing];
+            localStorage.setItem('simulationHistory', JSON.stringify(updated));
+            
+            alert('✅ 3 sample records dengan risk indicator berhasil ditambahkan!');
+            loadHistory();
+        }
+        
+        function clearHistory() {
+            if (confirm('⚠️ Yakin ingin menghapus SEMUA data history?\n\nData yang sudah dihapus tidak bisa dikembalikan!')) {
+                localStorage.removeItem('simulationHistory');
+                alert('🗑️ History berhasil dihapus!');
+                loadHistory();
+            }
+        }
+        
+        function exportJSON() {
+            const historyStr = localStorage.getItem('simulationHistory');
+            if (!historyStr) {
+                alert('❌ Tidak ada data untuk di-export!');
+                return;
+            }
+            
+            const blob = new Blob([historyStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `simulation_history_${new Date().getTime()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // Auto-load on page load
+        window.addEventListener('DOMContentLoaded', loadHistory);
+    </script>
+</body>
+</html>

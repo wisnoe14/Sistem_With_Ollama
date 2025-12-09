@@ -8,10 +8,7 @@ import {
     CreditCard,
     ShieldCheck,
     Target,
-    CheckCircle2,
-    XCircle,
 } from 'lucide-react';
-import { SimulationHistory } from "../components/SimulationHistory";
 // Fungsi untuk memanggil intent OpenAI
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1/endpoints";
 
@@ -32,26 +29,82 @@ const CSSimulation = () => {
     const [currentQuestion, setCurrentQuestion] = useState<ScenarioItem | null>(null);
     const [conversation, setConversation] = useState<ConversationItem[]>([]);
     const [result, setResult] = useState<Prediction | null>(null);
-    const [prediction, setPrediction] = useState<Prediction | null>(null);
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [simulationHistory, setSimulationHistory] = useState<HistoryItem[]>(() => {
+    const [, setSimulationHistory] = useState<HistoryItem[]>(() => {
         const saved = localStorage.getItem('simulationHistory');
-        return saved ? JSON.parse(saved) : [];
+        const history = saved ? JSON.parse(saved) : [];
+        
+        // Remove duplicates on load
+        const uniqueHistory = history.filter((item: HistoryItem, index: number) => {
+            // Keep item if no duplicate found in previous items
+            return !history.slice(0, index).some((prevItem: HistoryItem) => 
+                prevItem.customer_id === item.customer_id &&
+                prevItem.topik === item.topik &&
+                prevItem.status === item.status &&
+                prevItem.alasan === item.alasan &&
+                Math.abs(new Date(prevItem.tanggal).getTime() - new Date(item.tanggal).getTime()) < 5000 // within 5 seconds
+            );
+        });
+        
+        if (uniqueHistory.length !== history.length) {
+            localStorage.setItem('simulationHistory', JSON.stringify(uniqueHistory));
+        }
+        
+        return uniqueHistory;
     });
 
     // Helper untuk menambah data ke history dengan format tabel
-    function addToSimulationHistory({ status, alasan, estimasi_pembayaran }: { status: string; alasan: string; estimasi_pembayaran?: string }) {
-    const now = new Date();
-    const tanggal = now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID');
-    const customer_id = sessionStorage.getItem('customer_id') || '-';
-    const nama = sessionStorage.getItem('customer_name') || '-';
-    const topik = topic;
-    const item = { tanggal, customer_id, nama, topik, status, alasan, estimasi_pembayaran: estimasi_pembayaran || '-' };
+    function addToSimulationHistory({ status, alasan, estimasi_pembayaran, risk_level, risk_label, risk_color }: { status: string; alasan: string; estimasi_pembayaran?: string; risk_level?: string; risk_label?: string; risk_color?: string }) {
+        console.log('[addToSimulationHistory] 📝 Called with:', { status, alasan, estimasi_pembayaran, risk_level, risk_label, risk_color });
+        console.log('[addToSimulationHistory] Current topic state:', topic);
+        
+        // Validasi data sebelum disimpan - hanya tolak jika benar-benar kosong
+        if (!status || !alasan || !topic || 
+            status.trim() === '' || alasan.trim() === '' || topic.trim() === '' ||
+            status === 'undefined' || alasan === 'undefined') {
+            console.warn('⚠️ Skipping invalid history data:', { 
+                status, alasan, topic,
+                statusValid: !!status,
+                alasanValid: !!alasan, 
+                topicValid: !!topic
+            });
+            return;
+        }
+        
+        const now = new Date();
+        const tanggal = now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID');
+        const customer_id = sessionStorage.getItem('customer_id') || '-';
+        const nama = sessionStorage.getItem('customer_name') || '-';
+        const topik = topic;
+    const item = { tanggal, customer_id, nama, topik, status, alasan, estimasi_pembayaran: estimasi_pembayaran || '-', risk_level: risk_level || 'low', risk_label: risk_label || 'Aman', risk_color: risk_color || '#16a34a' };
+        
+        // Debug: Log data yang akan disimpan
+        console.log('💾 Saving to history:', item);
+        console.log('💾 Current topic:', topic);
+        console.log('💾 Status received:', status);
+        console.log('💾 Alasan received:', alasan);
+        console.log('🎯 Risk Level:', risk_level);
+        console.log('🎯 Risk Label:', risk_label);
+        console.log('🎯 Risk Color:', risk_color);
+        
         setSimulationHistory(prev => {
+            // Prevent double entry: check if last entry is duplicate for same customer/topic
+            if (prev.length > 0) {
+                const lastEntry = prev[0];
+                if (lastEntry.customer_id === customer_id && 
+                    lastEntry.topik === topik && 
+                    lastEntry.status === status &&
+                    lastEntry.alasan === alasan) {
+                    console.log('🚫 Preventing duplicate history entry');
+                    return prev; // Don't add duplicate
+                }
+            }
+            
             const updated = [item, ...prev];
             localStorage.setItem('simulationHistory', JSON.stringify(updated));
+            console.log('✅ Successfully saved to localStorage:', updated.length, 'items');
+            console.log('✅ Latest saved item:', updated[0]);
             return updated;
         });
     }
@@ -69,14 +122,19 @@ const CSSimulation = () => {
     type Topic = "telecollection" | "retention" | "winback";
 
     type ScenarioItem = {
-        q: string;
-        options: string[];
-        is_closing?: boolean; // tambahkan properti ini
+    q: string;
+    options: string[];
+    is_closing?: boolean;
+    question_followup?: string;
     };
 
     // Fungsi untuk memanggil prediksi dan navigasi ke halaman hasil
     // Fungsi untuk mengambil prediksi dan simpan ke history
     const fetchPrediction = async () => {
+        console.log('[fetchPrediction] 🚀 Starting prediction fetch...');
+        console.log('[fetchPrediction] Current topic:', topic);
+        console.log('[fetchPrediction] Conversation length:', conversation.length);
+        
         setLoading(true);
         try {
             const customer_id = sessionStorage.getItem('customer_id') || "";
@@ -108,14 +166,37 @@ const CSSimulation = () => {
             if (!response.ok) throw new Error('Gagal mengambil prediksi');
             const data = await response.json();
             const prediction = data.result;
+            
+            // 🔧 DEBUG: Log prediction data untuk troubleshooting
+            console.log('[fetchPrediction] Backend response:', data);
+            console.log('[fetchPrediction] Prediction data:', prediction);
+            console.log('[fetchPrediction] Status:', prediction?.status);
+            console.log('[fetchPrediction] Alasan:', prediction?.alasan);
+            console.log('[fetchPrediction] Estimasi pembayaran:', prediction?.estimasi_pembayaran);
+            console.log('[fetchPrediction] 🎯 Risk Level:', prediction?.risk_level);
+            console.log('[fetchPrediction] 🎯 Risk Label:', prediction?.risk_label);
+            console.log('[fetchPrediction] 🎯 Risk Color:', prediction?.risk_color);
+            
             setResult(prediction);
 
-            // Simpan ke history (format tabel)
-            addToSimulationHistory({
-                status: prediction.status || "-",
-                alasan: prediction.alasan || "-",
-                estimasi_pembayaran: topic === "telecollection" ? (prediction.estimasi_pembayaran || "-") : undefined
-            });
+            // 💾 Simpan ke history SEBELUM navigate
+            if (prediction && prediction.status && prediction.alasan) {
+                console.log('[fetchPrediction] ✅ Saving to history...');
+                addToSimulationHistory({
+                    status: prediction.status,
+                    alasan: prediction.alasan,
+                    estimasi_pembayaran: prediction.estimasi_pembayaran || '-',
+                    risk_level: prediction.risk_level,
+                    risk_label: prediction.risk_label,
+                    risk_color: prediction.risk_color
+                });
+                console.log('[fetchPrediction] ✅ History saved successfully');
+            } else {
+                console.warn('[fetchPrediction] ❌ Cannot save to history - missing required fields:', {
+                    hasStatus: !!prediction?.status,
+                    hasAlasan: !!prediction?.alasan
+                });
+            }
 
             // Navigasi ke halaman hasil
             navigate('/result', { state: { prediction, topic } });
@@ -145,6 +226,9 @@ const CSSimulation = () => {
         minat?: string;
         promo?: string;
         intent?: string;
+        risk_level?: string;
+        risk_label?: string;
+        risk_color?: string;
     };
 
     type HistoryItem = {
@@ -155,6 +239,9 @@ const CSSimulation = () => {
         status: string;
         alasan: string;
         estimasi_pembayaran?: string;
+        risk_level?: string;
+        risk_label?: string;
+        risk_color?: string;
     };
 
     // --- HELPER COMPONENTS ---
@@ -287,119 +374,12 @@ const CSSimulation = () => {
     };
 
     // Ganti AnswerInput agar mendukung closing
-    const AnswerInput = ({ question, options, onAnswer, loading, isClosing, onFinish }: {
-        question: string;
-        options: string[];
-        onAnswer: (answer: string) => void;
-        loading: boolean;
-        isClosing?: boolean;
-        onFinish?: () => void;
-    }) => {
-        const [manualAnswer, setManualAnswer] = useState("");
-
-        if (isClosing) {
-            // Tampilkan hanya pertanyaan penutup dan tombol Selesai
-            return (
-                <div className="w-full bg-white/80 backdrop-blur-lg p-6 rounded-2xl shadow-xl border border-gray-200 space-y-5 flex flex-col items-center">
-                    <p className="text-xl font-semibold text-gray-800 mb-6" style={{ fontFamily: 'Times New Roman, Times, serif', whiteSpace: 'pre-line', lineHeight: '1.6', textAlign: 'center' }}>{question}</p>
-                    <button
-                        className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg text-lg transition-all hover:bg-blue-700"
-                        onClick={onFinish}
-                    >
-                        Selesai
-                    </button>
-                </div>
-            );
-        }
-
-        // Batasi opsi maksimal 4 dan fallback jika kosong
-        let limitedOptions: string[] = [];
-        if (Array.isArray(options) && options.length > 0) {
-            limitedOptions = options.slice(0, 4);
-        }
-        return (
-            <div className="w-full bg-white/80 backdrop-blur-lg p-6 rounded-2xl shadow-xl border border-gray-200 space-y-5">
-                <div>
-                    <p className="text-sm font-semibold text-blue-700 mb-2">Pertanyaan AI:</p>
-                    <p
-                        className="text-xl font-semibold text-gray-800"
-                        style={{
-                            fontFamily: 'Times New Roman, Times, serif',
-                            whiteSpace: 'pre-line',
-                            lineHeight: '1.6',
-                            marginBottom: '12px',
-                            textAlign: 'justify',
-                            background: '#f8f8f8',
-                            borderRadius: '8px',
-                            padding: '16px',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-                        }}
-                    >
-                        {question}
-                    </p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {limitedOptions.map((opt, i) => (
-                        <button key={i} onClick={() => onAnswer(opt)} disabled={loading} className="text-left p-4 bg-white hover:bg-blue-50 border border-gray-300 rounded-lg transition-all duration-200 disabled:opacity-50 hover:border-blue-400 hover:shadow-md font-medium text-gray-700">
-                            {opt}
-                        </button>
-                    ))}
-                </div>
-                <div className="relative flex items-center">
-                    <hr className="w-full border-gray-300" />
-                    <span className="absolute left-1/2 -translate-x-1/2 bg-white/80 px-2 text-sm text-gray-500 font-medium">ATAU</span>
-                </div>
-                <div className="space-y-3">
-                    <textarea
-                        className="w-full p-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none transition-shadow"
-                        rows={3}
-                        placeholder="Ketik jawaban manual di sini..."
-                        value={manualAnswer}
-                        onChange={(e) => setManualAnswer(e.target.value)}
-                        disabled={loading}
-                    />
-                    <button onClick={() => { if (manualAnswer.trim()) { onAnswer(manualAnswer); setManualAnswer(""); } }} disabled={loading || !manualAnswer.trim()} className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all disabled:bg-gray-400">
-                        {loading ? 'Memproses...' : (isClosing ? 'Selesai' : 'Lanjutkan')}
-                    </button>
-                </div>
-            </div>
-        );
-    };
-
-    const PredictionResult = ({ result, topic, onReset }: {
-        result: Prediction;
-        topic: string;
-        onReset: () => void;
-    }) => {
-        const isSuccess = result.status === 'Success';
-        return (
-            <div className="w-full max-w-2xl mx-auto bg-white p-8 rounded-2xl shadow-2xl border border-gray-200 space-y-6">
-                <div className="text-center">
-                    <div className={`w-16 h-16 mx-auto rounded-full flex items-center justify-center ${isSuccess ? 'bg-green-100' : 'bg-red-100'}`}>
-                        {isSuccess ? <CheckCircle2 className="w-10 h-10 text-green-600" /> : <XCircle className="w-10 h-10 text-red-600" />}
-                    </div>
-                    <h2 className="text-3xl font-bold text-gray-800 mt-4">Hasil Prediksi AI</h2>
-                    <p className="text-gray-500">Analisis untuk skenario: <span className="font-semibold">{topic}</span></p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                    <div className="bg-gray-50 p-4 rounded-lg"><strong>Customer ID:</strong> <span className="font-semibold text-gray-800">{result.customer_id}</span></div>
-                    <div className="bg-gray-50 p-4 rounded-lg"><strong>Mode:</strong> <span className="font-semibold text-gray-800">{result.mode}</span></div>
-                    <div className="bg-gray-50 p-4 rounded-lg"><strong>Status Dihubungi:</strong> <span className="font-semibold text-gray-800">{result.status_dihubungi}</span></div>
-                    <div className="bg-gray-50 p-4 rounded-lg"><strong>Status:</strong> <span className={`font-semibold ${isSuccess ? 'text-green-700' : 'text-red-700'}`}>{result.status}</span></div>
-                    <div className="bg-gray-50 p-4 rounded-lg"><strong>Jenis Promo:</strong> <span className="font-semibold text-gray-800">{result.jenis_promo}</span></div>
-                    <div className="bg-gray-50 p-4 rounded-lg"><strong>Estimasi Pembayaran:</strong> <span className="font-semibold text-gray-800">{result.estimasi_pembayaran}</span></div>
-                </div>
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <h4 className="font-semibold text-gray-800 mb-1">Ringkasan Alasan:</h4>
-                    <p className="text-gray-700">{result.alasan}</p>
-                </div>
-                <button onClick={onReset} className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition-all shadow-lg">End Simulasi</button>
-            </div>
-        );
-    };
 
 
-// Komponen SimulationHistory dihapus, gunakan import dari components/SimulationHistory
+
+
+
+
 
     // --- APP COMPONENT ---
 
@@ -422,6 +402,8 @@ const CSSimulation = () => {
             setStatusDihubungi(status);
             // Setelah status dihubungi, mulai chat AI dengan ucapan pembuka
             const user_email = sessionStorage.getItem('user_email') || '';
+            // Debug: Check session data
+            console.log('Starting conversation with:', { customer_id, topic, user_email });
             const response = await fetch(`${API_BASE_URL}/conversation/generate-simulation-questions`, {
                 method: 'POST',
                 headers: {
@@ -430,13 +412,17 @@ const CSSimulation = () => {
                 },
                 body: JSON.stringify({ customer_id, topic, conversation: [], user: user_email }),
             });
-            if (!response.ok) throw new Error('Network response was not ok');
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
             const data = await response.json();
             if (data.question) {
-                setCurrentQuestion({ q: data.question, options: data.options || [], is_closing: data.is_closing });
+                setCurrentQuestion({ q: data.question, options: data.options || [], is_closing: data.is_closing, question_followup: data.question_followup });
             }
         } catch (error) {
-            alert("Gagal mengirim status dihubungi atau memulai chat AI.");
+            console.error("Error in handleStatusDihubungi:", error);
+            alert(`❌ Gagal memulai chat AI: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setLoading(false);
         }
@@ -444,19 +430,26 @@ const CSSimulation = () => {
 
     const handleAnswer = async (answer: string) => {
         setLoading(true);
+        // Clear current question immediately to show loading state
+        const prevQuestion = currentQuestion;
+        setCurrentQuestion(null);
+        
         let newConversation;
         const customer_id = sessionStorage.getItem('customer_id') || "";
         const token = sessionStorage.getItem('token');
+        const user_email = sessionStorage.getItem('user_email') || '';
+        
         // Jawaban untuk pertanyaan AI saja
         if (
-            currentQuestion?.q &&
-            !(conversation.length > 0 && conversation[conversation.length - 1].q === currentQuestion.q && conversation[conversation.length - 1].a === answer)
+            prevQuestion?.q &&
+            !(conversation.length > 0 && conversation[conversation.length - 1].q === prevQuestion.q && conversation[conversation.length - 1].a === answer)
         ) {
-            newConversation = [...conversation, { q: currentQuestion.q, a: answer }];
+            newConversation = [...conversation, { q: prevQuestion.q, a: answer }];
             setConversation(newConversation);
         } else {
             newConversation = [...conversation];
         }
+        
         try {
             // Simpan percakapan ke backend
             const saveRes = await fetch(`${API_BASE_URL}/conversation/next-question`, {
@@ -471,19 +464,37 @@ const CSSimulation = () => {
             const saveData = await saveRes.json();
             if (!saveData.success) throw new Error(saveData.error || 'Gagal menyimpan percakapan');
 
-            // Generate pertanyaan berikutnya
+            // Generate pertanyaan berikutnya dengan Ollama
+            console.log('🤖 Generating next question with Ollama...');
             const response = await fetch(`${API_BASE_URL}/conversation/generate-simulation-questions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     ...(token ? { Authorization: `Bearer ${token}` } : {})
                 },
-                body: JSON.stringify({ customer_id, topic, conversation: newConversation }),
+                body: JSON.stringify({ 
+                    customer_id, 
+                    topic, 
+                    conversation: newConversation, 
+                    user: user_email 
+                }),
             });
             if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
-            if (data.is_last) {
-                // Prediction hanya jika is_last
+            console.log('🤖 Ollama response:', data);
+            // Handle response from Ollama
+            if (data.question) {
+                console.log('✅ Setting new question from Ollama:', data.question);
+                setCurrentQuestion({ 
+                    q: data.question, 
+                    options: data.options || [], 
+                    is_closing: data.is_closing || data.stage === 'closing',
+                    question_followup: data.question_followup
+                });
+            } else if (data.is_closing || data.stage === 'closing' || data.is_last) {
+                // End conversation and get prediction
+                console.log('🏁 Conversation ending, getting prediction...');
+                
                 const predictRes = await fetch(`${API_BASE_URL}/conversation/predict`, {
                     method: 'POST',
                     headers: {
@@ -496,49 +507,69 @@ const CSSimulation = () => {
                         conversation: newConversation,
                     }),
                 });
+                
                 let prediction = data.prediction;
                 if (predictRes.ok) {
                     const predictData = await predictRes.json();
                     if (predictData && predictData.result) {
                         prediction = predictData.result;
+                        console.log('📊 Prediction result:', prediction);
                     }
                 }
+                
                 setResult(prediction);
-                navigate('/result', { state: { prediction, topic } });
-                // Simpan ke history (format tabel benar)
-                const now = new Date();
-                const nama = sessionStorage.getItem('customer_name') || '-';
-                const item: HistoryItem = {
-                    tanggal: now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID'),
-                    customer_id: customer_id || '-',
-                    nama,
-                    topik: topic,
-                    status: prediction.status || '-',
-                    alasan: prediction.alasan || '-',
-                    estimasi_pembayaran: topic === "telecollection" ? (prediction.estimasi_pembayaran || '-') : undefined
-                };
-                setSimulationHistory(prev => {
-                    const updated = [item, ...prev];
-                    localStorage.setItem('simulationHistory', JSON.stringify(updated));
-                    return updated;
-                });
+                
+                // Simpan ke history SEBELUM navigate
+                console.log('🎯 About to save prediction to history:');
+                console.log('🎯 prediction object:', prediction);
+                console.log('🎯 prediction.status:', prediction?.status);
+                console.log('🎯 prediction.alasan:', prediction?.alasan);
+                console.log('🎯 prediction.estimasi_pembayaran:', prediction?.estimasi_pembayaran);
+                console.log('🎯 current topic:', topic);
+                
+                if (prediction && prediction.status && prediction.alasan) {
+                    console.log('✅ Prediction is valid, calling addToSimulationHistory...');
+                    addToSimulationHistory({
+                        status: prediction.status,
+                        alasan: prediction.alasan,
+                        estimasi_pembayaran: prediction.estimasi_pembayaran || '-'
+                    });
+                    console.log('✅ History save completed, now navigating...');
+                } else {
+                    console.warn('❌ Prediction validation failed:', {
+                        hasPrediction: !!prediction,
+                        hasStatus: !!(prediction && prediction.status),
+                        hasAlasan: !!(prediction && prediction.alasan)
+                    });
+                }
+                
+                // Navigate SETELAH history disimpan dengan delay kecil untuk memastikan
+                setTimeout(() => {
+                    navigate('/result', { state: { prediction, topic } });
+                }, 100);
                 setCurrentQuestion(null);
-            } else if (data.question) {
-                setCurrentQuestion({ q: data.question, options: data.options || [], is_closing: data.is_closing });
             } else {
+                // No more questions available, end conversation
                 setCurrentQuestion(null);
             }
         } catch (error) {
-            alert("Gagal menyimpan percakapan atau mendapatkan pertanyaan berikutnya dari server.");
+            console.error('❌ Error in handleAnswer:', error);
+            
+            // Restore previous question if generation failed
+            if (prevQuestion) {
+                setCurrentQuestion(prevQuestion);
+            }
+            
+            // Show user-friendly error message
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            if (errorMessage.includes('Ollama') || errorMessage.includes('generate')) {
+                alert("⚠️ AI generation temporarily unavailable. Using fallback questions.\n\nThe system will continue with standard question flow.");
+            } else {
+                alert("❌ Gagal mengambil pertanyaan berikutnya. Silakan coba lagi.");
+            }
         } finally {
             setLoading(false);
         }
-    };
-
-    const handleReset = () => {
-        setCurrentQuestion(null);
-        setResult(null);
-        navigate('/Home');
     };
 
     const handleBack = async () => {
@@ -548,7 +579,7 @@ const CSSimulation = () => {
             setConversation(newConversation);
             
             // Kosongkan prediksi terakhir (kalau ada)
-            setPrediction(null);
+            // setPrediction(null); // Removed as setPrediction is no longer available
             
             // Generate pertanyaan sebelumnya berdasarkan conversation yang tersisa
             try {
@@ -684,8 +715,8 @@ const CSSimulation = () => {
                             <ScenarioControls
                                 topic={topic}
                                 setTopic={setTopic}
-                                isGenerating={isGenerating}
-                                disabled={isSimulationRunning || isGenerating}
+                                isGenerating={false}
+                                disabled={isSimulationRunning}
                             />
                         </div>
                     </aside>
@@ -751,30 +782,21 @@ const CSSimulation = () => {
                                         className="mt-2 px-4 py-2 bg-blue-600 text-white rounded"
                                         disabled={!selectedAlasan}
                                         onClick={() => {
-                                            // Simpan ke history (format tabel benar) untuk Tidak Dapat Dihubungi
-                                            const customer_id = sessionStorage.getItem('customer_id') || '-';
-                                            const nama = sessionStorage.getItem('customer_name') || '-';
-                                            const now = new Date();
-                                            const item: HistoryItem = {
-                                                tanggal: now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID'),
-                                                customer_id,
-                                                nama,
-                                                topik: topic,
-                                                status: `Tidak Dihubungi`,
-                                                alasan: selectedAlasan ?? "-",
-                                                estimasi_pembayaran: topic === "telecollection" ? "-" : undefined
-                                            };
-                                            setSimulationHistory(prev => {
-                                                const updated = [item, ...prev];
-                                                localStorage.setItem('simulationHistory', JSON.stringify(updated));
-                                                return updated;
-                                            });
+                                            // Simpan ke history untuk Tidak Dapat Dihubungi hanya jika data valid
+                                            if (selectedAlasan && topic) {
+                                                addToSimulationHistory({
+                                                    status: `Tidak Dihubungi`,
+                                                    alasan: selectedAlasan,
+                                                    estimasi_pembayaran: "-"
+                                                });
+                                            }
+                                            
                                             handleStatusDihubungi(`Tidak Dihubungi: ${selectedAlasan}`);
                                             setShowAlasanTidakDihubungi(false);
                                             navigate('/customer-reason', {
                                                 state: {
                                                     customerName,
-                                                    customerId: customer_id,
+                                                    customerId: sessionStorage.getItem('customer_id') || '-',
                                                     topic,
                                                     alasan: selectedAlasan
                                                 }
@@ -837,7 +859,6 @@ const CSSimulation = () => {
                                 </div>
                             </>
                         )}
-                        {/* <SimulationHistory history={simulationHistory} /> */}
                     </div>
                 </div>
             </main>
@@ -865,7 +886,13 @@ export function QuestionBox({
     loading,
     isClosing,
     onAnswer,
-}: QuestionBoxProps) {
+    ...rest
+}: QuestionBoxProps & { question_followup?: string }) {
+    const [manualAnswer, setManualAnswer] = useState("");
+
+    // Support for split winback question
+    const questionFollowup = rest.question_followup;
+
     // Jika closing, hanya tampilkan kalimat penutup dan tombol Selesai
     if (isClosing) {
         return (
@@ -881,8 +908,6 @@ export function QuestionBox({
             </div>
         );
     }
-
-    const [manualAnswer, setManualAnswer] = useState("");
     let limitedOptions: string[] = [];
     if (Array.isArray(options) && options.length > 0) {
         limitedOptions = options.slice(0, 4);
@@ -912,6 +937,9 @@ export function QuestionBox({
                     }}
                 >
                     {question}
+                    {questionFollowup && (
+                        <span style={{ display: 'block', marginTop: '12px', color: '#444', fontWeight: 500 }}>{questionFollowup}</span>
+                    )}
                 </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

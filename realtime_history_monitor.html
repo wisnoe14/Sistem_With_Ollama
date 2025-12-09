@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Real-time History Monitor</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        .monitor { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .status { padding: 10px; margin: 10px 0; border-radius: 4px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; }
+        .warning { background-color: #fff3cd; border: 1px solid #ffeaa7; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; }
+        pre { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            border-radius: 4px; 
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        .timestamp { color: #666; font-size: 12px; }
+        button { 
+            padding: 8px 15px; 
+            margin: 5px; 
+            cursor: pointer; 
+            border: none;
+            border-radius: 4px;
+            background: #007bff;
+            color: white;
+        }
+        button:hover { background: #0056b3; }
+        .clear-btn { background: #dc3545; }
+        .clear-btn:hover { background: #c82333; }
+        .refresh-btn { background: #28a745; }
+        .refresh-btn:hover { background: #218838; }
+    </style>
+</head>
+<body>
+    <h1>🔍 Real-time History Monitor</h1>
+    
+    <div class="monitor">
+        <h2>📊 Status Monitor</h2>
+        <div id="status"></div>
+        <button class="refresh-btn" onclick="checkHistory()">🔄 Refresh</button>
+        <button class="clear-btn" onclick="clearHistory()">🗑️ Clear History</button>
+        <button onclick="exportData()">💾 Export Data</button>
+    </div>
+
+    <div class="monitor">
+        <h2>📈 Live Updates</h2>
+        <div id="updates"></div>
+    </div>
+
+    <div class="monitor">
+        <h2>🗃️ Current Data</h2>
+        <pre id="data"></pre>
+    </div>
+
+    <script>
+        let lastDataHash = '';
+        let updateCount = 0;
+
+        function addUpdate(message, type = 'info') {
+            const updates = document.getElementById('updates');
+            const timestamp = new Date().toLocaleTimeString();
+            const statusClass = type === 'success' ? 'success' : type === 'error' ? 'error' : 'warning';
+            
+            updates.innerHTML = `<div class="status ${statusClass}">
+                <span class="timestamp">[${timestamp}]</span> ${message}
+            </div>` + updates.innerHTML;
+            
+            // Keep only last 10 updates
+            const children = updates.children;
+            if (children.length > 10) {
+                updates.removeChild(children[children.length - 1]);
+            }
+        }
+
+        function checkHistory() {
+            const historyRaw = localStorage.getItem('simulationHistory');
+            const status = document.getElementById('status');
+            const data = document.getElementById('data');
+
+            if (!historyRaw) {
+                status.innerHTML = '<div class="status error">❌ No history data found</div>';
+                data.textContent = 'No data in localStorage';
+                return;
+            }
+
+            try {
+                const history = JSON.parse(historyRaw);
+                const dataHash = btoa(historyRaw).slice(0, 10);
+                
+                // Check if data changed
+                if (dataHash !== lastDataHash) {
+                    lastDataHash = dataHash;
+                    updateCount++;
+                    addUpdate(`Data changed! Update #${updateCount} - ${history.length} items`, 'success');
+                }
+
+                // Analyze data
+                let validCount = 0;
+                let invalidCount = 0;
+                
+                history.forEach(item => {
+                    const hasTopik = item.topik || item.topic;
+                    const hasStatus = item.status || (item.result && item.result.status);
+                    const hasAlasan = item.alasan || (item.result && item.result.alasan);
+                    
+                    if (hasTopik && hasStatus && hasAlasan && 
+                        hasStatus !== '-' && hasAlasan !== '-') {
+                        validCount++;
+                    } else {
+                        invalidCount++;
+                    }
+                });
+
+                status.innerHTML = `
+                    <div class="status success">
+                        ✅ History loaded successfully<br>
+                        📊 Total items: ${history.length}<br>
+                        ✅ Valid items: ${validCount}<br>
+                        ❌ Invalid items: ${invalidCount}<br>
+                        🔄 Updates detected: ${updateCount}
+                    </div>
+                `;
+
+                // Show latest item with detail
+                if (history.length > 0) {
+                    const latest = history[0];
+                    data.textContent = JSON.stringify({
+                        latest_item: latest,
+                        all_items: history
+                    }, null, 2);
+                } else {
+                    data.textContent = 'Empty history array';
+                }
+
+            } catch (error) {
+                status.innerHTML = `<div class="status error">❌ Error parsing data: ${error.message}</div>`;
+                data.textContent = `Error: ${error.message}\n\nRaw data:\n${historyRaw}`;
+                addUpdate(`Parse error: ${error.message}`, 'error');
+            }
+        }
+
+        function clearHistory() {
+            if (confirm('Clear all history data?')) {
+                localStorage.removeItem('simulationHistory');
+                addUpdate('History cleared by user', 'warning');
+                checkHistory();
+            }
+        }
+
+        function exportData() {
+            const historyRaw = localStorage.getItem('simulationHistory');
+            if (!historyRaw) {
+                alert('No data to export');
+                return;
+            }
+            
+            const blob = new Blob([historyRaw], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `simulation_history_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            addUpdate('Data exported successfully', 'success');
+        }
+
+        // Monitor localStorage changes
+        let lastCheck = Date.now();
+        setInterval(() => {
+            checkHistory();
+        }, 1000);
+
+        // Listen for storage events (from other tabs)
+        window.addEventListener('storage', function(e) {
+            if (e.key === 'simulationHistory') {
+                addUpdate('Storage changed from external source', 'warning');
+                checkHistory();
+            }
+        });
+
+        // Initial check
+        addUpdate('Monitor started - checking every second', 'success');
+        checkHistory();
+    </script>
+</body>
+</html>

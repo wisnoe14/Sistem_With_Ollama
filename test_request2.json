@@ -1,0 +1,10 @@
+{
+  "customer_id": "ICON12345",
+  "topic": "telecollection",
+  "conversation": [
+    {
+      "q": "Kapan bisa bayar tagihan?",
+      "a": "belum ada uang sekarang, mungkin minggu depan"
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+goal,question,answer,context,mode
+status_contact,"Halo! Untuk pembayaran bulanan ICONNET bulan ini udah diselesaikan belum ya?","Belum bayar","Customer belum melakukan pembayaran",telecollection
+status_contact,"Apakah tagihan ICONNET bulan ini sudah dibayar?","Sudah bayar kemarin","Customer sudah bayar",telecollection
+payment_barrier,"Ada kendala khusus yang membuat pembayaran tertunda?","Belum gajian","Customer menunggu gaji",telecollection
+payment_barrier,"Boleh tau apa yang jadi hambatan untuk melakukan pembayaran?","Uang lagi habis untuk keperluan lain","Customer ada kendala finansial",telecollection
+payment_timeline,"Kapan kira-kira bisa melakukan pembayaran?","Besok saja ya","Customer komitmen besok",telecollection
+payment_timeline,"Kira-kira target pembayarannya kapan?","Minggu depan pas gajian","Customer komitmen minggu depan",telecollection
+greeting_identity,"Selamat pagi, apakah saya berbicara dengan Bapak/Ibu [Nama]?","Ya benar","Customer konfirmasi identitas",winback
+greeting_identity,"Apakah benar saya terhubung dengan pemilik layanan ICONNET?","Iya saya sendiri","Customer adalah pemilik",winback
+service_status,"Layanan ICONNET Bapak/Ibu masih aktif atau sudah berhenti?","Sudah berhenti bulan lalu","Customer sudah berhenti",winback
+service_status,"Untuk layanan ICONNET, sekarang statusnya bagaimana?","Ada gangguan terus","Customer ada gangguan",winback
+complaint_check,"Apakah pernah melapor ke CS tentang gangguannya?","Sudah beberapa kali","Customer sudah komplain",winback
+complaint_check,"Sudah pernah hubungi customer service belum?","Belum sempat","Customer belum komplain",winback
+renewal_commitment,"Apakah bersedia lanjut berlangganan setelah diperbaiki?","Kalau diperbaiki mau sih","Customer bersedia jika diperbaiki",winback
+renewal_commitment,"Minat untuk lanjut langganan lagi ga?","Tidak minat lagi","Customer tidak minat",winback
+device_check,"Apakah perangkat ICONNET masih ada di rumah?","Masih ada semua","Perangkat masih lengkap",winback
+device_check,"Untuk perangkat modem dan ONT nya masih ada?","Sudah dikembalikan","Perangkat sudah dikembalikan",winback
+greeting_identity,"Selamat siang, perkenalkan saya dari ICONNET. Apakah benar saya berbicara dengan Bapak/Ibu [Nama]?","Ya benar","Konfirmasi identitas untuk retention",retention
+service_check,"Kami melihat layanan Bapak/Ibu terputus. Apakah ada kendala yang bisa kami bantu?","Iya sempat gangguan","Retention cek layanan terputus",retention
+promo_introduction,"Boleh saya informasikan promo reaktivasi yang sedang berjalan?","Boleh silakan","Izin memperkenalkan promo",retention
+promo_detail,"Kami punya diskon 20%-30% untuk aktivasi kembali. Apakah ingin dengar detailnya?","Iya ingin tahu","Detail promo disampaikan",retention
+activation_interest,"Apakah Bapak/Ibu berminat untuk aktivasi kembali layanan ICONNET?","Berminat","Minat aktivasi kembali",retention
+reason_inquiry,"Boleh tahu apa alasan belum berminat?","Pindah rumah","Alasan tidak berminat",retention
+device_check,"Apakah perangkat ICONNET (modem/ONT) masih ada?","Masih ada","Cek perangkat masih ada",retention
+complaint_handling,"Apakah keluhannya sudah ditangani? Jika kami bantu perbaiki, apakah bersedia lanjut?","Kalau keluhan selesai saya lanjut","Tangani keluhan lalu lanjut",retention
+commitment_check,"Kapan kira-kira bisa putuskan untuk aktivasi kembali?","Minggu ini","Komitmen waktu keputusan",retention
+payment_timing,"Jika jadi aktivasi, kapan rencana pembayarannya?","Besok","Estimasi waktu pembayaran",retention
+wrong_number_check,"Apakah Bapak/Ibu [nama] ada di tempat? Atau bisa diinformasikan dengan siapa saat ini kami berbicara?","Ini keluarganya, bapaknya sedang keluar","Cek jika bukan pemilik nomor",retention
+promo_permission,"Saat ini kami memiliki program promo menarik. Apakah boleh saya sampaikan terlebih dahulu?","Boleh silakan","Minta izin sampaikan promo",retention
+rejection_reason,"Baik, boleh kami tahu apa alasan Bapak/Ibu tidak berminat?","Ada gangguan sering putus","Tanya alasan penolakan",retention
+device_location,"Apakah perangkat modem dan ONT masih di lokasi Bapak/Ibu?","Masih ada semua","Cek lokasi perangkat",retention
+relocation_interest,"Apakah di lokasi baru Bapak/Ibu berminat untuk pasang ICONNET kembali?","Tidak, sudah pakai provider lain","Minat pasang di lokasi baru",retention
+complaint_resolution,"Jika gangguannya kami selesaikan, apakah Bapak/Ibu bersedia melanjutkan layanan?","Bersedia kalau selesai","Resolusi keluhan dan lanjut",retention
+consideration_timeline,"Kira-kira kapan Bapak/Ibu bisa memutuskan untuk melanjutkan?","Hari ini saya pikir-pikir dulu","Timeline pertimbangan",retention
+payment_confirmation,"Kami akan kirim kode pembayaran via email. Apakah email masih aktif?","Masih aktif","Konfirmasi pengiriman kode bayar",retention
+stop_confirmation,"Apakah Bapak/Ibu yakin ingin menghentikan layanan ICONNET?","Yakin berhenti saja","Konfirmasi berhenti layanan",retention
+closing,"Terima kasih atas waktunya. Mohon maaf mengganggu, selamat sore.","Terima kasih","Penutup percakapan retention",retention

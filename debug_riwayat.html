@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Riwayat Simulasi</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .debug-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+        button { padding: 10px 15px; margin: 5px; cursor: pointer; }
+        .valid { background-color: #d4edda; }
+        .invalid { background-color: #f8d7da; }
+    </style>
+</head>
+<body>
+    <h1>Debug Riwayat Simulasi</h1>
+    
+    <div class="debug-section">
+        <h2>Status localStorage</h2>
+        <button onclick="refreshData()">Refresh Data</button>
+        <button onclick="clearHistory()">Clear History</button>
+        <button onclick="addTestData()">Add Test Data</button>
+        <div id="localStorage-info"></div>
+    </div>
+
+    <div class="debug-section">
+        <h2>Data Analysis</h2>
+        <div id="analysis-results"></div>
+    </div>
+
+    <div class="debug-section">
+        <h2>Raw Data</h2>
+        <pre id="raw-data"></pre>
+    </div>
+
+    <script>
+        function refreshData() {
+            const historyRaw = localStorage.getItem('simulationHistory');
+            const info = document.getElementById('localStorage-info');
+            const analysis = document.getElementById('analysis-results');
+            const rawData = document.getElementById('raw-data');
+
+            if (!historyRaw) {
+                info.innerHTML = '<p style="color: red;">❌ Tidak ada data riwayat di localStorage</p>';
+                analysis.innerHTML = '';
+                rawData.textContent = 'Tidak ada data';
+                return;
+            }
+
+            try {
+                const history = JSON.parse(historyRaw);
+                info.innerHTML = `<p style="color: green;">✅ Data ditemukan: ${history.length} items</p>`;
+                
+                // Analyze data
+                let validCount = 0;
+                let invalidCount = 0;
+                let analysisHtml = '<h3>Analisis Item:</h3>';
+                
+                history.forEach((item, index) => {
+                    const hasTopik = item.topik || item.topic;
+                    const hasStatus = item.status || (item.result && item.result.status);
+                    const hasAlasan = item.alasan || (item.result && item.result.alasan);
+                    
+                    const isValid = hasTopik && hasStatus && hasAlasan;
+                    
+                    if (isValid) {
+                        validCount++;
+                        analysisHtml += `<div class="valid">✅ Item ${index}: Valid - Topik: ${hasTopik}, Status: ${hasStatus}, Alasan: ${hasAlasan}</div>`;
+                    } else {
+                        invalidCount++;
+                        analysisHtml += `<div class="invalid">❌ Item ${index}: Invalid - Topik: ${hasTopik || 'MISSING'}, Status: ${hasStatus || 'MISSING'}, Alasan: ${hasAlasan || 'MISSING'}</div>`;
+                    }
+                });
+                
+                analysisHtml += `<p><strong>Valid items: ${validCount}</strong></p>`;
+                analysisHtml += `<p><strong>Invalid items: ${invalidCount}</strong></p>`;
+                
+                analysis.innerHTML = analysisHtml;
+                rawData.textContent = JSON.stringify(history, null, 2);
+                
+            } catch (error) {
+                info.innerHTML = `<p style="color: red;">❌ Error parsing data: ${error.message}</p>`;
+                rawData.textContent = historyRaw;
+            }
+        }
+
+        function clearHistory() {
+            if (confirm('Hapus seluruh riwayat?')) {
+                localStorage.removeItem('simulationHistory');
+                refreshData();
+                alert('Riwayat berhasil dihapus!');
+            }
+        }
+
+        function addTestData() {
+            const testData = [
+                {
+                    tanggal: "15/10/2025, 12.00.00",
+                    customer_id: "ICON12345",
+                    nama: "Test Customer",
+                    topik: "telecollection",
+                    status: "KEMUNGKINAN BAYAR",
+                    alasan: "Customer berkomitmen timeline (85%) namun ada kendala (90%)",
+                    estimasi_pembayaran: "Target Customer: 16 Oktober 2025 (perlu follow-up)"
+                },
+                {
+                    tanggal: "15/10/2025, 11.30.00",
+                    customer_id: "ICON67890",
+                    nama: "Test Customer 2",
+                    topik: "winback",
+                    status: "TERTARIK",
+                    alasan: "Customer menunjukkan minat untuk kembali menggunakan layanan",
+                    estimasi_pembayaran: "-"
+                }
+            ];
+            
+            localStorage.setItem('simulationHistory', JSON.stringify(testData));
+            refreshData();
+            alert('Test data berhasil ditambahkan!');
+        }
+
+        // Load data on page load
+        refreshData();
+    </script>
+</body>
+</html>

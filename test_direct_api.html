@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Direct API Test</h1>
+    <button onclick="testAPI()">Test Generate Questions API</button>
+    <div id="result"></div>
+
+    <script>
+        async function testAPI() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                console.log('🚀 Starting API test...');
+                
+                const payload = {
+                    customer_id: "ICON12345",
+                    topic: "telecollection",
+                    conversation: [],
+                    user: "test@iconnet.co.id"
+                };
+                
+                console.log('📤 Sending:', payload);
+                
+                const response = await fetch('http://localhost:8000/api/v1/endpoints/conversation/generate-simulation-questions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                console.log('📥 Response status:', response.status);
+                console.log('📥 Response ok:', response.ok);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('❌ Error response:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('✅ Success data:', data);
+                
+                resultDiv.innerHTML = `
+                    <h2>✅ Success!</h2>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                
+            } catch (error) {
+                console.error('❌ Error:', error);
+                resultDiv.innerHTML = `
+                    <h2>❌ Error!</h2>
+                    <p>Message: ${error.message}</p>
+                    <p>Stack: ${error.stack}</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

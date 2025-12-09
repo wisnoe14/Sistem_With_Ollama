@@ -1,0 +1,18 @@
+{
+  "customer_id": "ICON12",
+  "topic": "telecollection",
+  "conversation": [
+    {
+      "q": "Status Dihubungi?",
+      "a": "Dihubungi"
+    },
+    {
+      "q": "Halo, saya dari ICONNET. Untuk pembayaran bulan ini bagaimana?",
+      "a": "3 hari lagi insya Allah saya bayar"
+    },
+    {
+      "q": "Baik, terima kasih. Kapan waktu yang tepat untuk follow up?",
+      "a": "Kamis besok saja kontak saya lagi"
+    }
+  ]
+}

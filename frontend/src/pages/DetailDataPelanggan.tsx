@@ -93,6 +93,22 @@ const DetailDataPelanggan: React.FC = () => {
               </span>
             </div>
           </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center">
+            <div className="w-full sm:w-1/3 font-semibold text-gray-700 mb-1 sm:mb-0">Indikator Risiko:</div>
+            <div className="w-full sm:w-2/3 text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
+              {detail.risk_level && detail.risk_label && detail.risk_color ? (
+                <span 
+                  className="inline-block px-3 py-1 text-sm font-semibold text-white rounded-full"
+                  style={{ backgroundColor: detail.risk_color }}
+                >
+                  {detail.risk_label}
+                </span>
+              ) : (
+                <span className="text-gray-400">-</span>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="flex justify-center mt-8">

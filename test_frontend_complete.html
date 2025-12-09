@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Winback Test - Complete Flow</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 20px; 
+            background: #f5f5f5; 
+            line-height: 1.6;
+        }
+        .container { 
+            max-width: 800px; 
+            margin: 0 auto; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .mode-section { 
+            margin: 20px 0; 
+            padding: 15px; 
+            border: 1px solid #ddd; 
+            border-radius: 5px; 
+            background: #f9f9f9;
+        }
+        .conversation { 
+            border: 1px solid #ddd; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            background: white;
+        }
+        .question { 
+            background: #e3f2fd; 
+            padding: 10px; 
+            border-radius: 5px; 
+            margin-bottom: 10px; 
+        }
+        .answer { 
+            background: #f3e5f5; 
+            padding: 10px; 
+            border-radius: 5px; 
+            margin-bottom: 10px; 
+        }
+        .prediction { 
+            background: #e8f5e8; 
+            padding: 15px; 
+            border-radius: 5px; 
+            margin: 10px 0;
+            border-left: 4px solid #4caf50;
+        }
+        .debug { 
+            background: #fff3e0; 
+            padding: 10px; 
+            border-radius: 5px; 
+            font-size: 12px; 
+            margin-top: 10px; 
+        }
+        button { 
+            background: #2196F3; 
+            color: white; 
+            border: none; 
+            padding: 10px 20px; 
+            border-radius: 5px; 
+            cursor: pointer; 
+            margin: 5px; 
+        }
+        button:hover { background: #1976D2; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .error { 
+            background: #ffebee; 
+            border: 1px solid #f44336; 
+            padding: 10px; 
+            border-radius: 5px; 
+            color: #d32f2f; 
+        }
+        .success { 
+            background: #e8f5e8; 
+            border: 1px solid #4caf50; 
+            padding: 10px; 
+            border-radius: 5px; 
+            color: #2e7d32; 
+        }
+        .mode-selector {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 8px;
+        }
+        select {
+            padding: 8px 12px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            font-size: 14px;
+        }
+        .flow-step {
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+            padding: 10px 15px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Frontend Winback Test - Complete Flow</h1>
+        <p>Test frontend integration untuk mode winback dan telecollection</p>
+        
+        <div class="mode-selector">
+            <label for="mode"><strong>Pilih Mode Simulasi:</strong></label>
+            <select id="mode">
+                <option value="telecollection">📞 Telecollection - Penagihan & Recovery</option>
+                <option value="winback" selected>🔄 Winback - Reaktivasi Customer</option>
+                <option value="retention">🛡️ Retention - Pencegahan Churn</option>
+            </select>
+            <button onclick="startTest()">Start Test</button>
+            <button onclick="clearAll()">Clear All</button>
+        </div>
+        
+        <div id="results"></div>
+        
+        <div class="debug" id="debug">
+            <strong>Debug Info:</strong> Ready to test frontend flow...
+        </div>
+    </div>
+
+    <script>
+        let currentMode = 'winback';
+        let conversationHistory = [];
+        let currentStep = 0;
+        
+        // Update mode
+        document.getElementById('mode').addEventListener('change', function() {
+            currentMode = this.value;
+            updateDebug(`Mode changed to: ${currentMode}`);
+        });
+        
+        function updateDebug(message) {
+            const debug = document.getElementById('debug');
+            const timestamp = new Date().toLocaleTimeString();
+            debug.innerHTML = `<strong>Debug [${timestamp}]:</strong> ${message}`;
+        }
+        
+        async function startTest() {
+            const results = document.getElementById('results');
+            results.innerHTML = '';
+            conversationHistory = [];
+            currentStep = 0;
+            
+            updateDebug(`Starting test for ${currentMode} mode...`);
+            
+            // Create flow container
+            const flowDiv = document.createElement('div');
+            flowDiv.className = 'mode-section';
+            flowDiv.innerHTML = `
+                <h2>🎭 Testing ${currentMode.toUpperCase()} Mode</h2>
+                <div id="conversation-flow"></div>
+                <div id="prediction-result"></div>
+            `;
+            results.appendChild(flowDiv);
+            
+            try {
+                // Step 1: Get first question
+                await getFirstQuestion();
+                
+            } catch (error) {
+                showError(`Error starting test: ${error.message}`);
+                console.error('Test error:', error);
+            }
+        }
+        
+        async function getFirstQuestion() {
+            updateDebug('Getting first question from API...');
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/endpoints/conversation/generate-simulation-questions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        customer_id: 'TEST_FRONTEND_' + Date.now(),
+                        topic: currentMode,
+                        conversation: [],
+                        user: 'frontend_tester@test.com'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                updateDebug(`First question received for ${currentMode} mode`);
+                displayQuestion(data, 1);
+                
+            } catch (error) {
+                showError(`Failed to get first question: ${error.message}`);
+                throw error;
+            }
+        }
+        
+        function displayQuestion(questionData, stepNumber) {
+            const flowDiv = document.getElementById('conversation-flow');
+            
+            const stepDiv = document.createElement('div');
+            stepDiv.className = 'flow-step';
+            stepDiv.innerHTML = `
+                <h4>Step ${stepNumber}: ${questionData.goal || 'Unknown Goal'}</h4>
+                <div class="question">
+                    <strong>Q${stepNumber}:</strong> ${questionData.question}
+                </div>
+                <div>
+                    <strong>Options:</strong><br>
+                    ${questionData.options.map((option, index) => 
+                        `<button onclick="selectAnswer('${option}', ${stepNumber})">${option}</button>`
+                    ).join('')}
+                </div>
+                <div class="debug">
+                    Goal: ${questionData.goal || 'unknown'} | 
+                    ID: ${questionData.id || 'unknown'} | 
+                    Closing: ${questionData.is_closing ? 'Yes' : 'No'}
+                </div>
+            `;
+            
+            flowDiv.appendChild(stepDiv);
+        }
+        
+        async function selectAnswer(answer, stepNumber) {
+            updateDebug(`Answer selected: "${answer}" for step ${stepNumber}`);
+            
+            // Add to conversation history
+            conversationHistory.push({
+                q: `Question ${stepNumber}`,
+                a: answer,
+                goal: `step_${stepNumber}`
+            });
+            
+            // Update display
+            const steps = document.querySelectorAll('.flow-step');
+            const currentStepDiv = steps[stepNumber - 1];
+            
+            const answerDiv = document.createElement('div');
+            answerDiv.className = 'answer';
+            answerDiv.innerHTML = `<strong>A${stepNumber}:</strong> ${answer}`;
+            currentStepDiv.appendChild(answerDiv);
+            
+            // Disable buttons in current step
+            const buttons = currentStepDiv.querySelectorAll('button');
+            buttons.forEach(btn => btn.disabled = true);
+            
+            try {
+                // Get next question
+                const response = await fetch('http://localhost:8000/api/v1/endpoints/conversation/generate-simulation-questions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        customer_id: 'TEST_FRONTEND_' + Date.now(),
+                        topic: currentMode,
+                        conversation: conversationHistory,
+                        user: 'frontend_tester@test.com'
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.is_closing) {
+                    // Show closing message
+                    displayClosing(data, stepNumber + 1);
+                    // Get final prediction
+                    await getFinalPrediction();
+                } else {
+                    // Show next question
+                    displayQuestion(data, stepNumber + 1);
+                }
+                
+            } catch (error) {
+                showError(`Failed to get next question: ${error.message}`);
+            }
+        }
+        
+        function displayClosing(data, stepNumber) {
+            const flowDiv = document.getElementById('conversation-flow');
+            
+            const closingDiv = document.createElement('div');
+            closingDiv.className = 'flow-step success';
+            closingDiv.innerHTML = `
+                <h4>Step ${stepNumber}: Conversation Complete</h4>
+                <div class="question">
+                    <strong>🎉 Closing:</strong> ${data.question}
+                </div>
+                <div><strong>Conversation Ended Successfully!</strong></div>
+            `;
+            
+            flowDiv.appendChild(closingDiv);
+        }
+        
+        async function getFinalPrediction() {
+            updateDebug('Getting final prediction...');
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/v1/endpoints/conversation/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        customer_id: 'TEST_FRONTEND_' + Date.now(),
+                        topic: currentMode,
+                        conversation: conversationHistory
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                displayPrediction(data.result);
+                updateDebug(`Prediction completed for ${currentMode} mode`);
+                
+            } catch (error) {
+                showError(`Failed to get prediction: ${error.message}`);
+            }
+        }
+        
+        function displayPrediction(prediction) {
+            const predictionDiv = document.getElementById('prediction-result');
+            
+            predictionDiv.innerHTML = `
+                <div class="prediction">
+                    <h3>📊 Final Prediction Results</h3>
+                    <div><strong>Mode:</strong> ${currentMode}</div>
+                    <div><strong>Decision:</strong> ${prediction.keputusan || prediction.status || 'Unknown'}</div>
+                    <div><strong>Probability:</strong> ${prediction.probability || prediction.probability_score || 'Unknown'}${typeof prediction.probability === 'number' ? '%' : ''}</div>
+                    <div><strong>Confidence:</strong> ${prediction.confidence || 'Unknown'}</div>
+                    <div><strong>Reason:</strong> ${prediction.alasan || 'No reason provided'}</div>
+                    <div><strong>Date:</strong> ${prediction.tanggal_prediksi || 'Unknown'}</div>
+                </div>
+            `;
+        }
+        
+        function showError(message) {
+            const results = document.getElementById('results');
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.innerHTML = `<strong>Error:</strong> ${message}`;
+            results.appendChild(errorDiv);
+        }
+        
+        function clearAll() {
+            document.getElementById('results').innerHTML = '';
+            conversationHistory = [];
+            currentStep = 0;
+            updateDebug('All cleared. Ready for new test.');
+        }
+        
+        // Initialize
+        updateDebug('Frontend test ready. Select mode and click "Start Test".');
+    </script>
+</body>
+</html>

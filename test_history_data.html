@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test History Data Structure</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .test-section { margin-bottom: 30px; padding: 20px; border: 1px solid #ccc; border-radius: 8px; }
+        .code { background-color: #f4f4f4; padding: 10px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; }
+        button { background-color: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px; }
+        button:hover { background-color: #0056b3; }
+        .result { margin-top: 10px; padding: 10px; border-radius: 4px; }
+        .success { background-color: #d4edda; border: 1px solid #c3e6cb; color: #155724; }
+        .error { background-color: #f8d7da; border: 1px solid #f5c6cb; color: #721c24; }
+        .warning { background-color: #fff3cd; border: 1px solid #ffeaa7; color: #856404; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Test History Data Structure</h1>
+        
+        <div class="test-section">
+            <h2>📊 Current History Data</h2>
+            <button onclick="checkCurrentData()">Check Current History Data</button>
+            <div id="currentData" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>➕ Add Test History Item</h2>
+            <button onclick="addTestHistoryItem()">Add Test Item with All Fields</button>
+            <div id="addResult" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>✅ Validate Data Structure</h2>
+            <button onclick="validateStructure()">Validate History Structure</button>
+            <div id="validateResult" class="result"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>🧹 Clear History Data</h2>
+            <button onclick="clearHistory()">Clear All History</button>
+            <div id="clearResult" class="result"></div>
+        </div>
+    </div>
+
+    <script>
+        function getCurrentHistory() {
+            const saved = localStorage.getItem('simulationHistory');
+            return saved ? JSON.parse(saved) : [];
+        }
+
+        function checkCurrentData() {
+            const history = getCurrentHistory();
+            const resultDiv = document.getElementById('currentData');
+            
+            if (history.length === 0) {
+                resultDiv.className = 'result warning';
+                resultDiv.innerHTML = '⚠️ No history data found in localStorage';
+                return;
+            }
+
+            resultDiv.className = 'result success';
+            resultDiv.innerHTML = `
+                <strong>📈 Found ${history.length} history items:</strong><br>
+                <div class="code">${JSON.stringify(history, null, 2)}</div>
+            `;
+        }
+
+        function addTestHistoryItem() {
+            const now = new Date();
+            const testItem = {
+                tanggal: now.toLocaleDateString('id-ID') + ', ' + now.toLocaleTimeString('id-ID'),
+                customer_id: 'TEST12345',
+                nama: 'Test Customer',
+                topik: 'telecollection',
+                status: 'KEMUNGKINAN BAYAR',
+                alasan: 'Customer berkomitmen bayar besok',
+                estimasi_pembayaran: '17 Oktober 2025'
+            };
+
+            const history = getCurrentHistory();
+            const updated = [testItem, ...history];
+            localStorage.setItem('simulationHistory', JSON.stringify(updated));
+
+            const resultDiv = document.getElementById('addResult');
+            resultDiv.className = 'result success';
+            resultDiv.innerHTML = `
+                ✅ Test item added successfully!<br>
+                <div class="code">${JSON.stringify(testItem, null, 2)}</div>
+            `;
+        }
+
+        function validateStructure() {
+            const history = getCurrentHistory();
+            const resultDiv = document.getElementById('validateResult');
+            
+            if (history.length === 0) {
+                resultDiv.className = 'result warning';
+                resultDiv.innerHTML = '⚠️ No data to validate';
+                return;
+            }
+
+            const requiredFields = ['tanggal', 'customer_id', 'nama', 'topik', 'status', 'alasan'];
+            const optionalFields = ['estimasi_pembayaran'];
+            
+            let validItems = 0;
+            let issues = [];
+
+            history.forEach((item, index) => {
+                let itemValid = true;
+                let missingFields = [];
+
+                // Check required fields
+                requiredFields.forEach(field => {
+                    if (!item.hasOwnProperty(field) || item[field] === undefined || item[field] === null) {
+                        missingFields.push(field);
+                        itemValid = false;
+                    }
+                });
+
+                if (itemValid) {
+                    validItems++;
+                } else {
+                    issues.push(`Item ${index + 1}: Missing fields - ${missingFields.join(', ')}`);
+                }
+            });
+
+            if (issues.length === 0) {
+                resultDiv.className = 'result success';
+                resultDiv.innerHTML = `✅ All ${history.length} items have valid structure!`;
+            } else {
+                resultDiv.className = 'result error';
+                resultDiv.innerHTML = `
+                    ❌ Found ${issues.length} items with missing fields:<br>
+                    <div class="code">${issues.join('\n')}</div>
+                    <br>Valid items: ${validItems}/${history.length}
+                `;
+            }
+        }
+
+        function clearHistory() {
+            if (confirm('Are you sure you want to clear all history data?')) {
+                localStorage.removeItem('simulationHistory');
+                const resultDiv = document.getElementById('clearResult');
+                resultDiv.className = 'result success';
+                resultDiv.innerHTML = '🧹 History data cleared successfully!';
+            }
+        }
+
+        // Auto-check on page load
+        window.onload = function() {
+            checkCurrentData();
+        };
+    </script>
+</body>
+</html>
