@@ -19,6 +19,9 @@ from .shared.sentiment_analyzer import analyze_sentiment_and_intent
 from .shared.date_utils import get_current_date_info, parse_time_expressions_to_date
 from .shared.ollama_client import generate_reason_with_ollama
 
+# New conversation flows loader
+from .conversation_flows_loader import ConversationFlowsLoader
+
 # Temporary: keep using core for shared utilities while we migrate
 from . import gpt_service as _core
 
@@ -46,19 +49,28 @@ def _is_yes_owner(ans: str) -> bool:
     return _has(ans, ["ya", "iya", "benar", "saya", "pemilik"]) and not _has(ans, ["bukan", "salah"])
 
 def _is_not_owner(ans: str) -> bool:
-    return _has(ans, ["bukan", "salah sambung", "bukan pemilik"]) 
+    return _has(ans, ["bukan", "salah sambung", "bukan pemilik", "salah nomor"]) 
 
 def _mentions_paid(ans: str) -> bool:
-    return _has(ans, ["sudah bayar", "sudah dibayar", "sudah lunas", "sudah" ]) and not _has(ans, ["belum"])
+    return _has(ans, ["sudah bayar", "sudah dibayar", "sudah lunas", "telah bayar", "telah dibayar"]) and not _has(ans, ["belum"])
 
 def _mentions_unpaid(ans: str) -> bool:
-    return _has(ans, ["belum", "belum bayar", "belum dibayar", "tunggak", "menunggak"]) 
+    return _has(ans, ["belum", "belum bayar", "belum dibayar", "tunggak", "menunggak", "belum lunas"]) 
 
 def _mentions_complaint(ans: str) -> bool:
-    return _has(ans, ["gangguan", "keluhan", "lambat", "lemot", "putus"]) 
+    return _has(ans, ["gangguan", "keluhan", "lambat", "lemot", "putus", "bermasalah", "rusak", "error", "down"]) 
 
 def _mentions_timeline(ans: str) -> bool:
     return _has(ans, ["hari ini", "besok", "lusa", "minggu depan", "senin", "selasa", "rabu", "kamis", "jumat", "sabtu", "minggu"]) or any(ch.isdigit() for ch in ans or "")
+
+def _mentions_willingness(ans: str) -> bool:
+    return _has(ans, ["iya", "ya", "baik", "akan", "siap", "bersedia", "ok", "oke"])
+
+def _mentions_callback_request(ans: str) -> bool:
+    return _has(ans, ["hubungi lagi", "call back", "callback", "nanti", "jam lain"])
+
+def _mentions_alternative_number(ans: str) -> bool:
+    return _has(ans, ["nomor", "kontak", "telepon", "hp", "whatsapp", "wa"]) or any(ch.isdigit() for ch in ans or "")
 
 def _is_provider_technical_issue(ans: str) -> bool:
     # Deteksi kata kunci kendala teknis dari sisi layanan (provider/network)
@@ -67,13 +79,13 @@ def _is_provider_technical_issue(ans: str) -> bool:
         [
             "gangguan", "kendala teknis", "teknis", "teknik", "lambat", "lemot",
             "putus", "internet down", "down", "error", "maintenance", "jaringan",
-            "sinyal", "modem", "router", "wifi", "ONT", "LOS", "PON"
+            "sinyal", "modem", "router", "wifi", "ONT", "LOS", "PON", "bermasalah"
         ],
     )
 
 
 # -----------------------------
-# Question templates (simple)
+# Question templates (enhanced for complete flow)
 # -----------------------------
 def _closing_message() -> Dict:
     return {
@@ -83,155 +95,308 @@ def _closing_message() -> Dict:
             "Selamat pagi/siang/sore."
         ),
         "options": [],
+        "question_id": "tc_closing",
         "is_closing": True,
         "conversation_complete": True,
     }
 
 def _ask_status_contact() -> Dict:
-    # Kombinasikan greeting, verifikasi, dan konfirmasi pembayaran (sesuai praktik lama)
+    # Greeting + verification + payment status check
     return {
         "goal": "status_contact",
         "question": (
-            "Selamat siang, perkenalkan saya dari ICONNET. Apakah benar saya berbicara dengan pemilik layanan, dan "
-            "apakah Bapak/Ibu sudah melakukan pembayaran bulan ini?"
+            "Selamat pagi/siang/sore. Perkenalkan saya dari ICONNET. Apakah benar saya terhubung dengan pemilik layanan, dan "
+            "mohon maaf, apakah Bapak/Ibu sudah melakukan pembayaran bulanan ICONNET?"
         ),
-        "options": ["Sudah", "Belum", "Keluhan gangguan", "Bukan pemilik"],
-    }
+        "options": ["Sudah bayar", "Belum bayar", "Ada keluhan/gangguan", "Bukan pemilik"],        "question_id": "tc_status_contact",    }
 
-def _remind_and_ask_commitment() -> Dict:
-    # Keperluan reminder (dipakai jika perlu), namun flow yang diminta: tanya kendala dulu.
+def _paid_confirmation() -> Dict:
     return {
-        "goal": "payment_barrier",
+        "goal": "closing",
         "question": (
-            "Baik Pak/Bu, izin mengingatkan tagihan ICONNET bulan ini agar layanan tetap aktif. "
-            "Mohon informasi kendalanya mengapa belum bisa melakukan pembayaran saat ini?"
-        ),
-        "options": ["Belum gajian", "Ada kendala teknis", "Sedang di luar kota", "Lainnya"],
-    }
-
-def _ack_commitment_and_close(ans: str) -> Dict:
-    return {
-        "goal": "payment_timeline",
-        "question": (
-            f"Terima kasih, kami catat komitmennya: '{ans}'. Mohon segera lakukan pembayaran agar layanan tetap aktif."
+            "Baik terima kasih atas konfirmasinya pak/bu, mohon maaf mengganggu waktunya. Selamat pagi/siang/sore."
         ),
         "options": [],
+        "question_id": "tc_paid_confirm",
+        "is_closing": True,
+        "conversation_complete": True,
     }
 
-def _ask_barrier_question() -> Dict:
+def _remind_payment() -> Dict:
     return {
-        "goal": "payment_barrier",
+        "goal": "payment_reminder",
         "question": (
-            "Baik Pak/Bu, mohon informasi kendalanya mengapa belum bisa melakukan pembayaran saat ini?"
+            "Baik pak/bu, izin mengingatkan mengenai pembayaran ICONNET bulanannya ya. "
+            "Saat ini tagihan ICONNET bapak/ibu sudah muncul, nomor pembayaran sudah kami kirimkan melalui email dan WhatsApp. "
+            "Silahkan untuk melakukan pengecekan. Mohon untuk segera melakukan pembayaran agar ICONNET dirumah bapak/ibu tetap aktif."
         ),
-        "options": ["Belum gajian", "Masalah keuangan", "Lupa", "Lainnya"],
+        "options": ["Baik, akan bayar", "Ada masalah", "Belum bisa"],
+        "question_id": "tc_payment_reminder",
     }
 
-def _ask_commitment_question() -> Dict:
-    return {
-        "goal": "payment_timeline",
-        "question": (
-            "Baik, terima kasih informasinya. Sekiranya kapan Bapak/Ibu akan melakukan pembayaran?"
-        ),
-        "options": ["Hari ini", "Besok", "Minggu depan", "Belum tahu"],
-    }
-
-def _ask_commitment_with_apology_question() -> Dict:
+def _ask_payment_timeline() -> Dict:
     return {
         "goal": "payment_timeline",
         "question": (
-            "Mohon maaf atas ketidaknyamanan yang Bapak/Ibu alami. "
-            "Kami akan bantu tindak lanjuti kendalanya. "
-            "Sambil menunggu proses tersebut, sekiranya kapan Bapak/Ibu berencana melakukan pembayaran?"
+            "Baik bapak/ibu, sekiranya kapan akan melakukan pembayaran ya bapak/ibu?"
         ),
-        "options": ["Hari ini", "Besok", "Minggu depan", "Belum tahu"],
+        "options": ["Hari ini", "Besok", "Minggu depan", "Tanggal tertentu", "Belum pasti"],
+        "question_id": "tc_payment_timeline",
+    }
+
+def _ask_callback_schedule() -> Dict:
+    return {
+        "goal": "callback_schedule",
+        "question": (
+            "Baik pak/bu, saat ini tagihan bapak/ibu sudah melewati jatuh tempo. "
+            "Mohon untuk segera melakukan pembayaran agar layanan tetap aktif. "
+            "Apakah kami dapat menghubungi kembali di jam yang lain?"
+        ),
+        "options": ["Bisa", "Tidak perlu"],
+        "question_id": "tc_callback_schedule",
+    }
+
+def _ask_callback_time() -> Dict:
+    return {
+        "goal": "callback_time",
+        "question": (
+            "Bisa di informasikan pada pukul berapa kami bisa hubungi kembali?"
+        ),
+        "options": ["Pagi", "Siang", "Sore", "Malam"],
+        "question_id": "tc_callback_time",
+    }
+
+def _handle_complaint() -> Dict:
+    return {
+        "goal": "complaint_handling",
+        "question": (
+            "Mohon maaf atas ketidaknyamanannya, izin kami catat dan bantu laporkan keluhan tersebut ke tim terkait. "
+            "Izin apakah ada nomor alternatif yang dapat dihubungi selain nomor ini untuk konfirmasi terkait kendala yang dialami?"
+        ),
+        "options": ["Ada nomor", "Tidak ada", "Nanti saya info"],
+        "question_id": "tc_handle_complaint",
+    }
+
+def _provide_contact_channels() -> Dict:
+    return {
+        "goal": "closing",
+        "question": (
+            "Baik pak/bu, terima kasih informasinya. "
+            "Untuk keluhan terkait gangguan layanan ICONNET kakak dapat menghubungi kanal berikut:\n"
+            "- Call: 150678\n"
+            "- WhatsApp: 081916778887 / 081112002123\n"
+            "- Email: cc.iconnet@iconpln.co.id\n"
+            "- DM Instagram: iconnet.iconplus\n"
+            "- Website Chat: https://iconnet.id/\n\n"
+            "Terima kasih sudah berlangganan ICONNET."
+        ),
+        "options": [],
+        "question_id": "tc_contact_channels",
+        "is_closing": True,
+        "conversation_complete": True,
     }
 
 def _complaint_bad_debt_message() -> Dict:
     return {
-        "goal": "closing",
+        "goal": "complaint_bad_debt",
         "question": (
-            "Mohon maaf atas ketidaknyamanannya. Saat ini terdeteksi ada tunggakan. "
-            "Penanganan gangguan gratis bagi pelanggan aktif setelah pelunasan. Mohon lakukan pembayaran terlebih dahulu, ya."
+            "Mohon maaf pak/bu atas kendala yang dialami. "
+            "Untuk saat ini bapak/ibu tercatat masih belum melakukan pembayaran bulanan ICONNET. "
+            "Layanan penanganan gangguan di ICONNET bersifat gratis dengan syarat bapak/ibu terdaftar sebagai pelanggan aktif "
+            "dengan melakukan pelunasan tagihan pembayaran bulanan, sehingga dapat kami buatkan tiket pelaporan gangguan "
+            "jika bapak/ibu sudah melakukan pelunasan."
         ),
-        "options": [],
-        "is_closing": True,
-        "conversation_complete": True,
+        "options": ["Mengerti, akan bayar", "Tidak tertarik"],
+        "question_id": "tc_complaint_bad_debt",
     }
 
-def _complaint_active_message() -> Dict:
+def _not_owner_verify() -> Dict:
+    return {
+        "goal": "verify_identity",
+        "question": (
+            "Bisa diinformasikan dengan siapa saat ini saya berbicara? "
+            "Mohon maaf, Bapak/Ibu. Di data kami, layanan ini terdaftar atas nama pelanggan terdaftar. "
+            "Apakah saya dapat mengetahui apakah Bapak/Ibu adalah pemilik atau pengguna layanan tersebut?"
+        ),
+        "options": ["Pengguna/Keluarga", "Salah sambung"],
+        "question_id": "tc_verify_identity",
+    }
+
+def _ask_owner_contact() -> Dict:
+    return {
+        "goal": "owner_contact",
+        "question": (
+            "Mohon dibantu menginformasikan nomor telepon pemilik layanan agar kami dapat menghubungi yang bersangkutan ya pak/bu."
+        ),
+        "options": ["Ada nomor", "Tidak tahu"],
+        "question_id": "tc_owner_contact",
+    }
+
+def _wrong_number_apology() -> Dict:
     return {
         "goal": "closing",
         "question": (
-            "Mohon maaf atas ketidaknyamanannya, keluhan akan kami bantu eskalasi ke tim terkait. "
-            "Apabila berkenan, mohon nomor alternatif yang dapat dihubungi. Terima kasih."
+            "Mohon maaf atas kesalahannya pak/bu. Terima kasih atas waktunya, selamat pagi/siang/sore."
         ),
         "options": [],
-        "is_closing": True,
-        "conversation_complete": True,
-    }
-
-def _not_owner_message() -> Dict:
-    return {
-        "goal": "closing",
-        "question": (
-            "Baik, mohon bantu informasikan nomor kontak pemilik layanan agar kami dapat menghubungi yang bersangkutan. Terima kasih."
-        ),
-        "options": [],
+        "question_id": "tc_wrong_number",
         "is_closing": True,
         "conversation_complete": True,
     }
 
 
-def generate_question(conversation_history: List[Dict]) -> Dict:
-    """Generate next telecollection question using a rule-based flow aligned to spec.
-
-    Legacy goal names are preserved: status_contact -> payment_barrier -> payment_timeline -> closing.
-    """
+def _generate_question_ruleset(conversation_history: List[Dict]) -> Dict:
+    """Legacy rule-based question generation as fallback"""
     hist = conversation_history or []
-
     turns = len(hist)
 
-    # Stage 1: first touch
+    # Stage 1: First contact - greeting + verification + payment status
     if turns == 0:
         return _ask_status_contact()
 
-    # Stage 2: after first answer (from status_contact)
+    last_ans = _norm((hist[-1] or {}).get("a", "")) if hist else ""
+    last_goal = (hist[-1] or {}).get("goal", "") if hist else ""
+
+    # Stage 2: After first answer (status_contact)
     if turns == 1:
-        last_ans = _norm((hist[-1] or {}).get("a", ""))
-
-        # Owner check
-        if _is_not_owner(last_ans):
-            return _not_owner_message()
-
-        # Paid
+        # Customer already paid
         if _mentions_paid(last_ans):
-            return _closing_message()
-
-        # Complaint path
+            return _paid_confirmation()
+        
+        # Wrong number / not owner
+        if _is_not_owner(last_ans):
+            return _not_owner_verify()
+        
+        # Complaint mentioned
         if _mentions_complaint(last_ans):
-            # If also clearly unpaid -> bad debt handling; else escalate (active)
+            # Check if also unpaid (bad debt + complaint)
             if _mentions_unpaid(last_ans):
                 return _complaint_bad_debt_message()
-            return _complaint_active_message()
+            return _handle_complaint()
+        
+        # Unpaid (default path)
+        if _mentions_unpaid(last_ans):
+            return _remind_payment()
+    
+    # Stage 3: Handle based on previous goal
+    
+    # From payment_reminder -> ask timeline
+    if last_goal == "payment_reminder":
+        if _mentions_willingness(last_ans):
+            return _ask_payment_timeline()
+        if _mentions_complaint(last_ans):
+            return _handle_complaint()
+        # Default: still ask timeline even if hesitant
+        return _ask_payment_timeline()
+    
+    # From payment_timeline -> close or offer callback
+    if last_goal == "payment_timeline":
+        if _mentions_timeline(last_ans) and not _has(last_ans, ["belum pasti", "tidak tahu"]):
+            # Clear timeline given -> close
+            return _closing_message()
+        else:
+            # Unclear timeline -> offer callback
+            return _ask_callback_schedule()
+    
+    # From callback_schedule -> ask time or close
+    if last_goal == "callback_schedule":
+        if _has(last_ans, ["bisa", "ya", "iya", "boleh"]):
+            return _ask_callback_time()
+        else:
+            return _closing_message()
+    
+    # From callback_time -> close
+    if last_goal == "callback_time":
+        return _closing_message()
+    
+    # From complaint_handling -> provide contact channels
+    if last_goal == "complaint_handling":
+        return _provide_contact_channels()
+    
+    # From complaint_bad_debt -> ask timeline or close
+    if last_goal == "complaint_bad_debt":
+        if _has(last_ans, ["mengerti", "baik", "akan bayar", "iya"]):
+            return _ask_payment_timeline()
+        else:
+            return _closing_message()
+    
+    # From verify_identity -> ask owner contact or apologize
+    if last_goal == "verify_identity":
+        if _has(last_ans, ["pengguna", "keluarga", "saudara", "anak", "istri", "suami"]):
+            return _ask_owner_contact()
+        else:
+            # Salah sambung
+            return _wrong_number_apology()
+    
+    # From owner_contact -> close
+    if last_goal == "owner_contact":
+        return _closing_message()
 
-        # Unpaid atau ambigu → tanya kendala terlebih dahulu (payment_barrier)
-        return _ask_barrier_question()
-
-    # Stage 3: after barrier answered → ask commitment timeline
-    if turns == 2:
-        last_barrier = _norm((hist[-1] or {}).get("a", ""))
-        if _is_provider_technical_issue(last_barrier):
-            return _ask_commitment_with_apology_question()
-        return _ask_commitment_question()
-
-    # Stage 4+: acknowledge and close
+    # Default: close conversation
     return _closing_message()
 
+
+def generate_question(conversation_history: List[Dict]) -> Dict:
+    """Generate next telecollection question using conversation flows from JSON.
+
+    This updated version uses the new decision tree structure from conversation_flows.json
+    with explicit routing (options have next_question IDs).
     
-    # Step berikutnya (len == 2): setelah kendala, minta komitmen
-    # Catatan: blok ini unreachable karena return di atas; namun diletakkan pada
-    # struktur yang lebih eksplisit di bawah untuk kejelasan.
+    Flow:
+    1. Load initial question if no history
+    2. For subsequent turns, use conversation history to determine next question
+    3. Use rules to match customer answer to the appropriate option routing
+    """
+    loader = ConversationFlowsLoader()
+    hist = conversation_history or []
+    
+    # Load opening question if no history
+    if not hist:
+        print(" 📂 Loading opening question for telecollection")
+        opening_q = loader.get_opening_question("telecollection")
+        if opening_q:
+            print(f"   ✅ Got opening: {opening_q.get('question_id')}")
+            return opening_q
+        else:
+            print("   ❌ Opening question not found in flows!")
+            # Fallback to template
+            return _ask_status_contact()
+    
+    # Get last answer and determine next question_id
+    last_ans = (hist[-1] or {}).get("a", "") or (hist[-1] or {}).get("answer", "")
+    current_question_id = (hist[-1] or {}).get("question_id")
+    
+    if not current_question_id:
+        print(" ⚠️  No question_id in last history entry, loading opening")
+        opening_q = loader.get_opening_question("telecollection")
+        return opening_q if opening_q else _ask_status_contact()
+    
+    # Determine next question using flow routing
+    next_question_id = loader.determine_next_question(
+        "telecollection", 
+        hist,
+        last_ans
+    )
+    
+    if next_question_id:
+        print(f" 🔄 Routing: {current_question_id} → {next_question_id}")
+        next_q = loader.get_question("telecollection", next_question_id)
+        if next_q:
+            print(f"   ✅ Got question: {next_q.get('question')[:60]}...")
+            return next_q
+        else:
+            print(f"   ❌ Next question '{next_question_id}' not found!")
+    else:
+        print(f" ⚠️  Could not determine routing from '{current_question_id}'")
+        # Fallback: Try to get current question for retry
+        retry_q = loader.get_question("telecollection", current_question_id)
+        if retry_q and retry_q.get("options"):
+            print("   📢 Retrying current question")
+            return retry_q
+    
+    # Fallback to rule-based generation if routing fails
+    print(" 🔄 Falling back to rule-based generation")
+    return _generate_question_ruleset(hist)
 
 
 def check_goals(conversation_history: List[Dict]) -> Dict:

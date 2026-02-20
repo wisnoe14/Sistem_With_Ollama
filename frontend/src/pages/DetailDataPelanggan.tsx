@@ -28,7 +28,7 @@ const DetailDataPelanggan: React.FC = () => {
       <div className="w-full max-w-2xl bg-white p-8 rounded-3xl shadow-2xl border border-gray-100 space-y-6 animate-fade-in-down">
         <div className="flex flex-col items-center mb-6">
           <h2 className="text-3xl font-extrabold text-gray-800 mb-1 tracking-tight">Detail Data Pelanggan</h2>
-          <p className="text-gray-500 text-base">Informasi lengkap hasil simulasi</p>
+          <p className="text-gray-500 text-base">Informasi lengkap hasil percakapan</p>
         </div>
 
         <div className="space-y-4">
@@ -54,7 +54,7 @@ const DetailDataPelanggan: React.FC = () => {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center">
-            <div className="w-full sm:w-1/3 font-semibold text-gray-700 mb-1 sm:mb-0">Topik Simulasi:</div>
+            <div className="w-full sm:w-1/3 font-semibold text-gray-700 mb-1 sm:mb-0">Topik Percakapan:</div>
             <div className="w-full sm:w-2/3 text-gray-900 bg-gray-50 px-3 py-2 rounded-lg">
               {detail.topik || '-'}
             </div>
@@ -113,10 +113,10 @@ const DetailDataPelanggan: React.FC = () => {
 
         <div className="flex justify-center mt-8">
           <button
-            onClick={() => navigate('/menu-riwayat-simulasi')}
+            onClick={() => navigate('/riwayat-percakapan')}
             className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition-colors shadow-lg"
           >
-            Kembali ke Riwayat Simulasi
+            Kembali ke Riwayat Percakapan
           </button>
         </div>
       </div>

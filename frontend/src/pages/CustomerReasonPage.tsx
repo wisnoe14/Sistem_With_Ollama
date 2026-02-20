@@ -31,7 +31,7 @@ const CustomerReasonPage: React.FC = () => {
             <span className="text-lg font-bold text-blue-900">{customerId || '-'}</span>
           </div>
           <div className="bg-purple-50 rounded-xl p-5 flex flex-col gap-1 border border-purple-100">
-            <span className="text-xs text-gray-500 font-medium">Topik Simulasi</span>
+            <span className="text-xs text-gray-500 font-medium">Topik Percakapan</span>
             <span className="text-lg font-bold text-purple-900">{topicLabelMap[topic] || topic}</span>
           </div>
           <div className="bg-red-50 rounded-xl p-5 flex flex-col gap-1 border border-red-100">

@@ -63,7 +63,7 @@ const ResultPage: React.FC = () => {
               <span className="text-lg font-bold text-blue-900">{customer_id}</span>
             </div>
             <div className="bg-purple-50 rounded-xl p-5 flex flex-col gap-1 border border-purple-100">
-              <span className="text-xs text-gray-500 font-medium">Topik Simulasi</span>
+              <span className="text-xs text-gray-500 font-medium">Topik Percakapan</span>
               <span className="text-lg font-bold text-purple-900">{topicLabelMap[topic] || topic}</span>
             </div>
             <div className="bg-red-50 rounded-xl p-5 flex flex-col gap-1 border border-red-100 md:col-span-2">
@@ -73,10 +73,18 @@ const ResultPage: React.FC = () => {
           </div>
           <div className="flex flex-col gap-4 mt-4">
             <button
-              onClick={() => navigate('/Home')}
-              className="w-full py-3 bg-gradient-to-r from-gray-400 to-gray-600 hover:from-gray-500 hover:to-gray-700 text-white font-bold rounded-xl shadow-lg text-lg transition-all"
+              onClick={() => {
+                sessionStorage.removeItem('customer_id');
+                sessionStorage.removeItem('customer_name');
+                sessionStorage.removeItem('status_dihubungi');
+                navigate('/Home');
+              }}
+              className="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold rounded-xl shadow-lg text-lg transition-all flex items-center justify-center gap-2"
             >
-              Kembali ke Input ID Pelanggan
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              <span>➕ Hubungi Customer Baru</span>
             </button>
           </div>
         </div>
@@ -91,12 +99,12 @@ const ResultPage: React.FC = () => {
           <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-full p-4 shadow-lg mb-2">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0-1.104-.896-2-2-2s-2 .896-2 2 .896 2 2 2 2-.896 2-2-.896-2-2-2-2 .896-2 2zm0 0c0 1.104.896 2 2 2s2-.896 2-2-.896-2-2-2-2 .896-2 2zm0 0v2m0 4h.01" /></svg>
           </div>
-          <h2 className="text-3xl font-extrabold text-gray-800 mb-1 tracking-tight">Hasil Prediksi AI</h2>
-          <p className="text-gray-500 text-base">Berikut detail hasil prediksi simulasi</p>
+          <h2 className="text-3xl font-extrabold text-gray-800 mb-1 tracking-tight">Hasil Analisis AI</h2>
+          <p className="text-gray-500 text-base">Berikut detail hasil analisis percakapan</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-blue-50 rounded-xl p-5 flex flex-col gap-1 border border-blue-100">
-            <span className="text-xs text-gray-500 font-medium">Topik Simulasi</span>
+            <span className="text-xs text-gray-500 font-medium">Topik Percakapan</span>
             <span className="text-lg font-bold text-blue-900">{topicLabelMap[topic] || topic}</span>
           </div>
           <div className="bg-blue-50 rounded-xl p-5 flex flex-col gap-1 border border-blue-100">

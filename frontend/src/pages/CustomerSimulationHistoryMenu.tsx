@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import * as XLSX from "xlsx";
 
@@ -26,7 +26,7 @@ interface HistoryItem {
 
 const CustomerSimulationHistoryMenu: React.FC = () => {
   const navigate = useNavigate();
-  const historyRaw = localStorage.getItem("simulationHistory");
+  const historyRaw = localStorage.getItem("conversationHistory");
   const history: HistoryItem[] = historyRaw ? JSON.parse(historyRaw) : [];
   
   // Debug: Log data yang ada di localStorage
@@ -34,11 +34,17 @@ const CustomerSimulationHistoryMenu: React.FC = () => {
   console.log('🔍 Parsed history:', history);
   console.log('🔍 History length:', history.length);
   
+  const isFilled = (value?: string) => {
+    if (!value) return false;
+    const trimmed = value.trim();
+    return trimmed !== '' && trimmed !== '-';
+  };
+
   // Filter data yang valid (memiliki minimal topik, status, dan alasan)
   const validHistory = history.filter(item => {
-    const hasValidData = (item.topik || item.topic) && 
-                        (item.status || item.result?.status) && 
-                        (item.alasan || item.result?.alasan);
+    const hasValidData = isFilled(item.topik || item.topic) && 
+                        isFilled(item.status || item.result?.status) && 
+                        isFilled(item.alasan || item.result?.alasan);
     if (!hasValidData) {
       console.log('⚠️ Skipping invalid item:', item);
     }
@@ -46,6 +52,12 @@ const CustomerSimulationHistoryMenu: React.FC = () => {
   });
   
   console.log('✅ Valid history items:', validHistory.length);
+
+  useEffect(() => {
+    if (validHistory.length !== history.length) {
+      localStorage.setItem("conversationHistory", JSON.stringify(validHistory));
+    }
+  }, [history.length, validHistory.length]);
 
   const handleExport = () => {
     const worksheetData = validHistory.map((item: HistoryItem) => ({
@@ -60,13 +72,13 @@ const CustomerSimulationHistoryMenu: React.FC = () => {
     }));
     const worksheet = XLSX.utils.json_to_sheet(worksheetData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Riwayat Simulasi");
-    XLSX.writeFile(workbook, "Riwayat_Simulasi_CS.xlsx");
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Riwayat Percakapan");
+    XLSX.writeFile(workbook, "Riwayat_Percakapan_Customer.xlsx");
   };
 
   const handleReset = () => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus seluruh riwayat simulasi?')) {
-      localStorage.removeItem('simulationHistory');
+    if (window.confirm('Apakah Anda yakin ingin menghapus seluruh riwayat percakapan?')) {
+      localStorage.removeItem('conversationHistory');
       window.location.reload();
     }
   };
@@ -75,8 +87,8 @@ const CustomerSimulationHistoryMenu: React.FC = () => {
     <div className="min-h-screen bg-gray-100 py-8 px-2 flex flex-col items-center">
       <div className="w-full max-w-4xl bg-white p-8 rounded-3xl shadow-2xl border border-gray-100 space-y-8 animate-fade-in-down">
         <div className="flex flex-col items-center mb-6">
-          <h2 className="text-3xl font-extrabold text-gray-800 mb-1 tracking-tight">Menu Riwayat Simulasi Pelanggan</h2>
-          <p className="text-gray-500 text-base">Data hasil simulasi pelanggan (bisa dihubungi & tidak bisa dihubungi)</p>
+          <h2 className="text-3xl font-extrabold text-gray-800 mb-1 tracking-tight">Riwayat Percakapan Pelanggan</h2>
+          <p className="text-gray-500 text-base">Data hasil percakapan dengan pelanggan</p>
         </div>
         <div className="flex flex-col sm:flex-row justify-between items-center mb-4 gap-4">
           <div className="flex gap-2">
@@ -91,7 +103,7 @@ const CustomerSimulationHistoryMenu: React.FC = () => {
             <button
               onClick={() => {
                 console.log('🔧 Debug Info:');
-                console.log('Raw localStorage:', localStorage.getItem('simulationHistory'));
+                console.log('Raw localStorage:', localStorage.getItem('conversationHistory'));
                 console.log('Total items:', history.length);
                 console.log('Valid items:', validHistory.length);
                 console.log('Invalid items:', history.length - validHistory.length);
@@ -196,7 +208,7 @@ const CustomerSimulationHistoryMenu: React.FC = () => {
             ) : (
               <tbody>
                 <tr>
-                  <td colSpan={9} className="text-center py-4">Tidak ada data riwayat simulasi.</td>
+                  <td colSpan={9} className="text-center py-4">Tidak ada data riwayat percakapan.</td>
                 </tr>
               </tbody>
             )}
